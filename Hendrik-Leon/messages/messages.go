@@ -7,6 +7,8 @@ import (
 	"unicode/utf8"
 )
 
+var ByteOrder = binary.LittleEndian
+
 type (
 	ErrorCode byte
 	MessageID byte
@@ -42,9 +44,9 @@ type ClientInfo struct {
 
 func WriteClientInfo(w io.Writer, info ClientInfo) {
 	w.Write(info.Client_ip)
-	binary.Write(w, binary.BigEndian, info.Client_port)
-	binary.Write(w, binary.BigEndian, info.Name_len)
-	binary.Write(w, binary.BigEndian, []byte(info.Name))
+	binary.Write(w, ByteOrder, info.Client_port)
+	binary.Write(w, ByteOrder, info.Name_len)
+	binary.Write(w, ByteOrder, []byte(info.Name))
 }
 
 // Messages
@@ -110,7 +112,7 @@ func ReadRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMessage,
 		Message_id: MessageID(m[0]),
 		Client: ClientInfo{
 			Client_ip:   m[1:5],
-			Client_port: binary.BigEndian.Uint16(m[5:7]),
+			Client_port: ByteOrder.Uint16(m[5:7]),
 			Name_len:    m[7],
 			Name:        string(name),
 		},
@@ -124,8 +126,8 @@ type RegistrationResponseMessage struct {
 }
 
 func WriteRegistrationResponse(w io.Writer, list map[net.Conn]ClientInfo) {
-	binary.Write(w, binary.BigEndian, byte(RegistrationResponse))
-	binary.Write(w, binary.BigEndian, uint32(len(list)))
+	binary.Write(w, ByteOrder, byte(RegistrationResponse))
+	binary.Write(w, ByteOrder, uint32(len(list)))
 
 	for _, info := range list {
 		WriteClientInfo(w, info)
@@ -139,8 +141,8 @@ type BroadcastMessage struct {
 }
 
 func WriteBroadcastMessage(w io.Writer, msg string) {
-	binary.Write(w, binary.BigEndian, byte(Broadcast))
-	binary.Write(w, binary.BigEndian, uint32(len(msg)))
+	binary.Write(w, ByteOrder, byte(Broadcast))
+	binary.Write(w, ByteOrder, uint32(len(msg)))
 	w.Write([]byte(msg))
 }
 
@@ -152,7 +154,7 @@ func ReadBroadcastMessage(r io.Reader) BroadcastMessage {
 		panic(err)
 	}
 
-	msg_len_16 := binary.BigEndian.Uint16(msg_len)
+	msg_len_16 := ByteOrder.Uint16(msg_len)
 	msg := make([]byte, msg_len_16)
 	_, err = r.Read(msg)
 	if err != nil {
@@ -172,7 +174,7 @@ type NewClientConnectedMessage struct {
 }
 
 func WriteNewClientConnectedMessage(w io.Writer, client ClientInfo) {
-	binary.Write(w, binary.BigEndian, byte(NewClientConnected))
+	binary.Write(w, ByteOrder, byte(NewClientConnected))
 	WriteClientInfo(w, client)
 }
 
@@ -183,7 +185,7 @@ type ClientDisconnectedMessage struct {
 }
 
 func WriteClientDisconnectMessage(w io.Writer, name string) {
-	binary.Write(w, binary.BigEndian, byte(ClientDisconnectedS2C))
-	binary.Write(w, binary.BigEndian, byte(len(name)))
+	binary.Write(w, ByteOrder, byte(ClientDisconnectedS2C))
+	binary.Write(w, ByteOrder, byte(len(name)))
 	w.Write([]byte(name))
 }
