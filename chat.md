@@ -101,7 +101,7 @@ struct ClientDisconnected {
 }
 ```
 
-## Server Broadcast
+## Broadcast
 
 Timeout 5 Sekunden
 
@@ -112,6 +112,8 @@ struct BroadcastMessage {
     uint8_t msg[N]; // utf-8
 }
 ```
+
+Ein Client schickt eine Broadcast Message an den Server. Der Server schickt daraufhin eine Broadcast Message an alle Clients.
 
 ## Client Disconnect (Client zu Server)
 
