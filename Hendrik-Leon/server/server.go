@@ -19,13 +19,13 @@ const (
 	RegistrationResponse
 	ClientListRecieved
 	NewClientConnected
-	ClientDisconnected
+	ClientDisconnectedS2C
 	Broadcast
-	Disconnect
+	DisconnectC2S
 )
 
 const (
-	UnknownMessageID ErrorCode = iota
+	InvalidMessageID ErrorCode = iota
 	IPPortNotUnique
 	NameNotUnique
 	NameLengthZero
@@ -59,10 +59,6 @@ type RegistrationResponseMessage struct {
 	clients    []ClientInfo
 }
 
-type ClientListRecievedMessage struct {
-	message_id MessageID
-}
-
 type NewClientConnectedMessage struct {
 	message_id MessageID
 	client     ClientInfo
@@ -80,17 +76,12 @@ type BroadcastMessage struct {
 	message     string
 }
 
-type DisconnectMessage struct {
-	message_id MessageID
-}
-
 const port = 7777
 
-var client_list []ClientInfo = make([]ClientInfo, 0, 16)
+var client_list map[net.Conn]ClientInfo = make(map[net.Conn]ClientInfo, 16)
 var client_list_mutex sync.Mutex
 
 func main() {
-
 	if len(os.Args) == 1 {
 		fmt.Println("Please provide host:port")
 		os.Exit(1)
@@ -118,7 +109,7 @@ func main() {
 			continue
 		}
 		// Handle new connections in a Goroutine for concurrency
-		go registerClient(conn)
+		go handleConnection(conn)
 	}
 }
 
@@ -130,7 +121,7 @@ func UnmarshalRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMes
 	}
 
 	if m[0] != byte(RegistrationRequest) {
-		return RegistrationRequestMessage{}, UnknownMessageID
+		return RegistrationRequestMessage{}, InvalidMessageID
 	}
 
 	_, err = conn.Read(m[1:5])
@@ -180,13 +171,52 @@ func WriteClientInfo(w io.Writer, info ClientInfo) {
 	binary.Write(w, binary.BigEndian, []byte(info.name))
 }
 
-func WriteRegistrationResponse(w io.Writer, list []ClientInfo) {
+func WriteRegistrationResponse(w io.Writer, list map[net.Conn]ClientInfo) {
 	binary.Write(w, binary.BigEndian, byte(RegistrationResponse))
 	binary.Write(w, binary.BigEndian, uint32(len(list)))
 
 	for _, info := range list {
 		WriteClientInfo(w, info)
 	}
+}
+
+func WriteBroadcastMessage(w io.Writer, msg string) {
+	binary.Write(w, binary.BigEndian, byte(Broadcast))
+	binary.Write(w, binary.BigEndian, uint32(len(msg)))
+	w.Write([]byte(msg))
+}
+
+// already read message ID
+func ReadBroadcastMessage(r io.Reader) BroadcastMessage {
+	msg_len := make([]byte, 4)
+	_, err := r.Read(msg_len)
+	if err != nil {
+		panic(err)
+	}
+
+	msg_len_16 := binary.BigEndian.Uint16(msg_len)
+	msg := make([]byte, msg_len_16)
+	_, err = r.Read(msg)
+	if err != nil {
+		panic(err)
+	}
+
+	return BroadcastMessage{
+		message_id:  Broadcast,
+		message_len: msg_len_16,
+		message:     string(msg),
+	}
+}
+
+func WriteClientDisconnectMessage(w io.Writer, name string) {
+	binary.Write(w, binary.BigEndian, byte(ClientDisconnectedS2C))
+	binary.Write(w, binary.BigEndian, byte(len(name)))
+	w.Write([]byte(name))
+}
+
+func WriteNewClientConnectedMessage(w io.Writer, client ClientInfo) {
+	binary.Write(w, binary.BigEndian, byte(NewClientConnected))
+	WriteClientInfo(w, client)
 }
 
 func writeError(w io.Writer, code ErrorCode) {
@@ -196,7 +226,7 @@ func writeError(w io.Writer, code ErrorCode) {
 	}
 }
 
-func registerClient(conn net.Conn) {
+func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	defer func() {
@@ -212,10 +242,11 @@ func registerClient(conn net.Conn) {
 	}
 
 	client_list_mutex.Lock()
-	defer client_list_mutex.Unlock()
-	client_list = append(client_list, regReq.client)
+	client_list[conn] = regReq.client
 
 	WriteRegistrationResponse(conn, client_list)
+
+	client_list_mutex.Unlock()
 
 	res := []byte{0}
 	_, err := conn.Read(res)
@@ -226,5 +257,57 @@ func registerClient(conn net.Conn) {
 	if res[0] != byte(ClientListRecieved) {
 		fmt.Printf("Expected ClientListRecieved (3) but got %d\n", res[0])
 		return
+	}
+
+	client_list_mutex.Lock()
+
+	for client_conn := range client_list {
+		if client_conn == conn {
+			continue
+		}
+
+		WriteNewClientConnectedMessage(client_conn, regReq.client)
+	}
+
+	client_list_mutex.Unlock()
+
+	for {
+		msg_id := []byte{0}
+		_, err := conn.Read(msg_id)
+
+		if err == io.EOF {
+			fmt.Printf("Client Disconnected")
+			return
+		}
+
+		if err != nil {
+			panic(err)
+		}
+
+		switch MessageID(msg_id[0]) {
+		case Broadcast:
+			msg := ReadBroadcastMessage(conn)
+			client_list_mutex.Lock()
+
+			for client_conn := range client_list {
+				WriteBroadcastMessage(client_conn, msg.message)
+			}
+
+			client_list_mutex.Unlock()
+		case ClientDisconnectedS2C:
+			client_list_mutex.Lock()
+
+			for client_conn := range client_list {
+				if client_conn == conn {
+					continue
+				}
+
+				WriteClientDisconnectMessage(client_conn, regReq.client.name)
+			}
+
+			client_list_mutex.Unlock()
+		default:
+			writeError(conn, InvalidMessageID)
+		}
 	}
 }
