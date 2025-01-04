@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
-	"os"
 	"sync"
 
 	"github.com/bafto/PeerToPeer/messages"
@@ -18,11 +18,6 @@ var (
 )
 
 func main() {
-	if len(os.Args) == 1 {
-		fmt.Println("Please provide host:port")
-		os.Exit(1)
-	}
-
 	// Resolve the string address to a TCP address
 	tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
@@ -35,6 +30,7 @@ func main() {
 		panic(err)
 	}
 
+	slog.Info("listening for connections")
 	for {
 		// Accept new connections
 		conn, err := listener.Accept()
@@ -42,6 +38,7 @@ func main() {
 			fmt.Println(err)
 			continue
 		}
+		slog.Info("got a new connection", "remote-addr", conn.RemoteAddr())
 		// Handle new connections in a Goroutine for concurrency
 		go handleConnection(conn)
 	}
@@ -52,12 +49,13 @@ func handleConnection(conn net.Conn) {
 
 	defer func() {
 		if err := recover(); err != nil {
-			fmt.Println("Server Error")
+			slog.Error("Server Error", "err", err)
 		}
 	}()
 
 	regReq, errCode := messages.ReadRegistrationRequestMessage(conn)
 	if errCode != messages.NoError {
+		slog.Warn("error reading registration message", "error-code", errCode)
 		messages.WriteErrorMessage(conn, errCode)
 		return
 	}
@@ -76,7 +74,7 @@ func handleConnection(conn net.Conn) {
 	}
 
 	if res[0] != byte(messages.ClientListRecieved) {
-		fmt.Printf("Expected ClientListRecieved (3) but got %d\n", res[0])
+		slog.Warn(fmt.Sprintf("Expected ClientListRecieved (3) but got %d\n", res[0]))
 		return
 	}
 
@@ -97,7 +95,7 @@ func handleConnection(conn net.Conn) {
 		_, err := conn.Read(msg_id)
 
 		if err == io.EOF {
-			fmt.Printf("Client Disconnected")
+			slog.Info("Client Disconnected", "remote-addr", conn.RemoteAddr())
 			return
 		}
 
