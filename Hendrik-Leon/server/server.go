@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"sync"
@@ -65,21 +64,6 @@ func handleConnection(conn net.Conn) {
 
 	messages.WriteRegistrationResponse(conn, client_list)
 
-	client_list_mutex.Unlock()
-
-	res := []byte{0}
-	_, err := conn.Read(res)
-	if err != nil {
-		panic(err)
-	}
-
-	if res[0] != byte(messages.ClientListRecieved) {
-		slog.Warn(fmt.Sprintf("Expected ClientListRecieved (3) but got %d\n", res[0]))
-		return
-	}
-
-	client_list_mutex.Lock()
-
 	for client_conn := range client_list {
 		if client_conn == conn {
 			continue
@@ -90,17 +74,31 @@ func handleConnection(conn net.Conn) {
 
 	client_list_mutex.Unlock()
 
+	broadcastClientDisconnect := func() {
+		for client_conn := range client_list {
+			if client_conn == conn {
+				continue
+			}
+
+			messages.WriteClientDisconnectMessage(client_conn, regReq.Client.Name)
+		}
+	}
+
+	slog.Info("handling connection")
 	for {
 		msg_id := []byte{0}
 		_, err := conn.Read(msg_id)
-
-		if err == io.EOF {
-			slog.Info("Client Disconnected", "remote-addr", conn.RemoteAddr())
-			return
-		}
-
 		if err != nil {
-			panic(err)
+			slog.Info("Client Disconnected", "remote-addr", conn.RemoteAddr())
+
+			client_list_mutex.Lock()
+			if _, ok := client_list[conn]; ok {
+				slog.Warn("Client did not yet send a disconnect message")
+				broadcastClientDisconnect()
+			}
+
+			client_list_mutex.Unlock()
+			return
 		}
 
 		switch messages.MessageID(msg_id[0]) {
@@ -113,16 +111,11 @@ func handleConnection(conn net.Conn) {
 			}
 
 			client_list_mutex.Unlock()
-		case messages.ClientDisconnectedS2C:
+		case messages.DisconnectC2S:
 			client_list_mutex.Lock()
 
-			for client_conn := range client_list {
-				if client_conn == conn {
-					continue
-				}
-
-				messages.WriteClientDisconnectMessage(client_conn, regReq.Client.Name)
-			}
+			broadcastClientDisconnect()
+			delete(client_list, conn)
 
 			client_list_mutex.Unlock()
 		default:

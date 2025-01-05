@@ -2,6 +2,7 @@ package messages
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"unicode/utf8"
@@ -43,10 +44,28 @@ type ClientInfo struct {
 }
 
 func WriteClientInfo(w io.Writer, info ClientInfo) {
-	w.Write(info.Client_ip)
+	w.Write([]byte(info.Client_ip))
 	binary.Write(w, ByteOrder, info.Client_port)
 	binary.Write(w, ByteOrder, info.Name_len)
 	binary.Write(w, ByteOrder, []byte(info.Name))
+}
+
+func ReadClientInfo(r io.Reader) ClientInfo {
+	ip_slice := [4]byte{}
+	r.Read(ip_slice[:])
+	port_slice := [2]byte{}
+	r.Read(port_slice[:])
+	name_len := [1]byte{}
+	r.Read(name_len[:])
+	name := make([]byte, name_len[0])
+	r.Read(name)
+
+	return ClientInfo{
+		Client_ip:   net.IP(ip_slice[:]),
+		Client_port: ByteOrder.Uint16(port_slice[:]),
+		Name_len:    name_len[0],
+		Name:        string(name),
+	}
 }
 
 // Messages
@@ -69,7 +88,7 @@ type RegistrationRequestMessage struct {
 }
 
 func ReadRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMessage, ErrorCode) {
-	m := make([]byte, 8)
+	m := [8]byte{}
 	_, err := conn.Read(m[:1])
 	if err != nil {
 		panic(err)
@@ -79,17 +98,7 @@ func ReadRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMessage,
 		return RegistrationRequestMessage{}, InvalidMessageID
 	}
 
-	_, err = conn.Read(m[1:5])
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = conn.Read(m[5:7])
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = conn.Read(m[7:8])
+	_, err = io.ReadFull(conn, m[1:])
 	if err != nil {
 		panic(err)
 	}
@@ -119,6 +128,24 @@ func ReadRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMessage,
 	}, NoError
 }
 
+func WriteRegistrationRequest(w io.Writer, client_ip net.IP, client_port uint16, name string) error {
+	if len(name) > 255 {
+		return fmt.Errorf("the length of name may not exceed 255 bytes")
+	}
+	if len(name) == 0 {
+		return fmt.Errorf("name length must be greater than 0")
+	}
+
+	w.Write([]byte{byte(RegistrationRequest)})
+	WriteClientInfo(w, ClientInfo{
+		Client_ip:   client_ip,
+		Client_port: client_port,
+		Name_len:    byte(len(name)),
+		Name:        name,
+	})
+	return nil
+}
+
 type RegistrationResponseMessage struct {
 	Message_id MessageID
 	N_clients  uint32
@@ -132,6 +159,27 @@ func WriteRegistrationResponse(w io.Writer, list map[net.Conn]ClientInfo) {
 	for _, info := range list {
 		WriteClientInfo(w, info)
 	}
+}
+
+func ReadRegistrationResponseMessage(r io.Reader) (RegistrationResponseMessage, error) {
+	message_id := [1]byte{}
+	r.Read(message_id[:])
+	if MessageID(message_id[0]) != RegistrationResponse {
+		return RegistrationResponseMessage{}, fmt.Errorf("Server responded with invalid message ID (%d)", message_id[0])
+	}
+
+	n_clients_slice := [4]byte{}
+	r.Read(n_clients_slice[:])
+	n_clients := ByteOrder.Uint32(n_clients_slice[:])
+	client_infos := make([]ClientInfo, 0, n_clients)
+	for range n_clients {
+		client_infos = append(client_infos, ReadClientInfo(r))
+	}
+	return RegistrationResponseMessage{
+		Message_id: RegistrationResponse,
+		N_clients:  n_clients,
+		Clients:    client_infos,
+	}, nil
 }
 
 type BroadcastMessage struct {
