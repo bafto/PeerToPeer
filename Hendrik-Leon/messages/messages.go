@@ -291,8 +291,8 @@ func ReadPeerToPeerRequestMessage(conn *net.UDPConn) (PeerToPeerRequestMessage, 
 	return PeerToPeerRequestMessage{
 		Message_id: PeerToPeerRequest,
 		Tcp_port:   ByteOrder.Uint16(b[1:3]),
-		Name_len: name_len,
-		Name: string(b[4:4+name_len]),
+		Name_len:   name_len,
+		Name:       string(b[4 : 4+name_len]),
 	}, addr, NoError
 }
 
