@@ -6,11 +6,11 @@ import argparse
 
 # Globale Variablen
 running = True
+clients = {}  # Hier speichern wir die Client-Informationen als Dictionary
 
 # Sockets für TCP und UDP erstellen
 tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
 
 # Registrierung beim Server
 def register_with_server(nickname, server_host, server_port, udp_port):
@@ -25,10 +25,21 @@ def register_with_server(nickname, server_host, server_port, udp_port):
         response = tcp_socket.recv(1024)
         msg_id, num_clients = struct.unpack('!B I', response[:5])
         print(f"Erfolgreich registriert. {num_clients} andere Clients online.")
+
+        # Clients aus der Antwort extrahieren und speichern
+        if msg_id == 2:
+            idx = 5
+            while idx < len(response):
+                ip = socket.inet_ntoa(response[idx:idx+4])
+                udp_port = struct.unpack('!H', response[idx+4:idx+6])[0]
+                name_len = response[idx+6]
+                name = response[idx+7:idx+7+name_len].decode('utf-8')
+                clients[name] = {'ip': ip, 'udp_port': udp_port}
+                idx += 7 + name_len
+
     except Exception as e:
         print(f"Fehler bei der Registrierung: {e}")
         tcp_socket.close()
-
 
 # Broadcast senden
 def send_broadcast(message):
@@ -38,7 +49,6 @@ def send_broadcast(message):
         print("Broadcast gesendet.")
     except Exception as e:
         print(f"Fehler beim Broadcast: {e}")
-
 
 # Peer-to-Peer Chat starten
 def start_p2p_chat(target_ip, target_port, message):
@@ -54,8 +64,6 @@ def start_p2p_chat(target_ip, target_port, message):
     except Exception as e:
         print(f"Fehler beim P2P-Chat: {e}")
 
-
-# Nachrichten empfangen (TCP & UDP)
 def receive_messages():
     global running
     while running:
@@ -66,8 +74,24 @@ def receive_messages():
             msg_id = data[0]
             if msg_id == 4:
                 print("Neuer Client verbunden.")
+                # Neuer Client wird hinzugefügt
+                ip = socket.inet_ntoa(data[1:5])
+                udp_port = struct.unpack('!H', data[5:7])[0]
+                name_len = data[7]
+                name = data[8:8+name_len].decode('utf-8')
+                print("neuer name ist:::::: ", name)
+                # Nur einen neuen Client hinzufügen, wenn er noch nicht existiert
+                if name not in clients:
+                    clients[name] = {'ip': ip, 'udp_port': udp_port}
+                print(f"Neuer Client: {name}, IP: {ip}, UDP Port: {udp_port}")
             elif msg_id == 5:
                 print("Client hat sich abgemeldet.")
+                # Client abgemeldet, entferne ihn aus der Liste
+                name_len = data[1]
+                name = data[2:2+name_len].decode('utf-8')
+                if name in clients:
+                    del clients[name]
+                print(f"Client {name} entfernt.")
             elif msg_id == 6:
                 msg_len = struct.unpack('!H', data[1:3])[0]
                 message = data[3:3+msg_len].decode('utf-8')
@@ -75,6 +99,11 @@ def receive_messages():
         except Exception as e:
             print(f"Fehler beim Empfangen von Nachrichten: {e}")
 
+# Client-Liste anzeigen
+def get_client_list():
+    print("\nAktuelle Clients:")
+    for name, info in clients.items():
+        print(f"Name: {name}, IP: {info['ip']}, UDP Port: {info['udp_port']}")
 
 # Disconnect vom Server
 def disconnect_from_server():
@@ -86,7 +115,6 @@ def disconnect_from_server():
         print("Vom Server abgemeldet.")
     except Exception as e:
         print(f"Fehler beim Abmelden: {e}")
-
 
 # Hauptprogramm
 def main():

@@ -2,12 +2,34 @@ import socket
 import threading
 import struct
 import argparse
+import time
 
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = 7777
 
 clients = {}  # Speichert die Verbindungen der Clients
 
+def recv_with_timeout(client_socket, expected_length, timeout):
+
+    data = b''  # Leerer Puffer für die empfangenen Daten
+    start_time = time.time()  # Zeitstempel für Timeout
+
+    while len(data) < expected_length:
+        remaining_time = timeout - (time.time() - start_time)
+        if remaining_time <= 0:
+            print("Timeout erreicht, bevor die erwarteten Daten empfangen wurden.")
+            return None
+
+        # Empfange Daten mit der verbleibenden Zeit
+        chunk = client_socket.recv(min(1024, expected_length - len(data)))
+
+        if not chunk:  # Verbindung wurde geschlossen oder ein Fehler ist aufgetreten
+            print("Verbindung geschlossen oder Fehler beim Empfangen.")
+            return None
+        
+        data += chunk
+
+    return data
 
 def handle_client(client_socket):
     try:
@@ -27,22 +49,23 @@ def handle_client(client_socket):
         
 
 def handel_msg(client_socket):
-    data = client_socket.recv(1024)
-    msg_id = data[0]
+    # liest die msg-ID
+    msg_id = recv_with_timeout(client_socket, expected_length=1, timeout=5)
     handler = MSG_HANDLERS_Server.get(msg_id)
     if handler:
-        return handler(data, client_socket)
+        return handler(client_socket)
     else:
         print(f"Kein Handler für msg_id {msg_id} gefunden!")
 
 
-def handel_fehler(data, client_socket):  # Msg-Id: 0
-    error_code = data[1]
+def handel_fehler(client_socket):  # Msg-Id: 0
+    error_code = recv_with_timeout(client_socket, expected_length=1, timeout=5)
     print(f"Fehler behandeln - Code: {error_code}")
 
 
-def handel_registrierung(data, client_socket):  # Msg-Id: 1
+def handel_registrierung(client_socket):  # Msg-Id: 1
     try:
+        data = recv_with_timeout(client_socket, expected_length=7, timeout=5)
         ip, udp_port, name_len = struct.unpack('!4sH B', data[1:8])
         name = data[8:8 + name_len].decode('utf-8')
 
@@ -76,12 +99,19 @@ def handel_neuer_client_connected(client_socket, new_client_name, new_client_ip,
     for client_name, (sock, client_ip, client_port) in clients.items():
         if sock != client_socket:  # Nachricht nicht an den neuen Client senden
             try:
-                msg = f"Neuer Client verbunden: {new_client_name}, IP: {new_client_ip}, Port: {new_client_port}"
-                response = struct.pack('!B H', 4, len(msg)) + msg.encode('utf-8')
+                name_encoded = new_client_name.encode('utf-8')
+                name_len = len(name_encoded)
+
+                ip_as_int = struct.unpack('!I', socket.inet_aton(new_client_ip))[0]  # Wandelt die IP in einen Integer um
+
+                msg = struct.pack('!I H B', ip_as_int, new_client_port, name_len) + name_encoded
+
+                response = struct.pack('!B H', 4, len(msg)) + msg
+
                 sock.send(response)
-                print(f"Nachricht an {client_name} gesendet: {msg}")
             except Exception as e:
                 print(f"Fehler beim Senden der Benachrichtigung an {client_name}: {e}")
+
 
 
 
@@ -98,10 +128,11 @@ def handel_disconnected_notification(disconnected_client_name):  # Msg-Id: 5
 
 
 
-def handel_broadcast(data, client_socket):  # Msg-Id: 6
+def handel_broadcast(client_socket):  # Msg-Id: 6
     try:
-        msg_len = struct.unpack('!H', data[1:3])[0]
-        msg = data[3:3 + msg_len].decode('utf-8')
+        
+        msg_len = recv_with_timeout(client_socket, expected_length=2, timeout=2)
+        msg = recv_with_timeout(client_socket, expected_length=msg_len, timeout=2)
 
         for client_name, (sock, client_ip, client_port) in clients.items():
             if sock != client_socket:
@@ -116,7 +147,7 @@ def handel_broadcast(data, client_socket):  # Msg-Id: 6
 
 
 
-def handel_disconnect_message(data, client_socket):  # Msg-Id: 7
+def handel_disconnect_message(client_socket):  # Msg-Id: 7
     disconnected_client_name = None
 
     for name, (sock, ip, port) in list(clients.items()):
