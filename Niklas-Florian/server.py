@@ -51,7 +51,7 @@ def handle_client(client_socket):
 def handel_msg(client_socket):
     # liest die msg-ID
     msg_id = recv_with_timeout(client_socket, expected_length=1, timeout=5)
-    handler = MSG_HANDLERS_Server.get(msg_id)
+    handler = MSG_HANDLERS_Server.get(msg_id[0])
     if handler:
         return handler(client_socket)
     else:
@@ -66,8 +66,9 @@ def handel_fehler(client_socket):  # Msg-Id: 0
 def handel_registrierung(client_socket):  # Msg-Id: 1
     try:
         data = recv_with_timeout(client_socket, expected_length=7, timeout=5)
-        ip, udp_port, name_len = struct.unpack('!4sH B', data[1:8])
-        name = data[8:8 + name_len].decode('utf-8')
+        ip, udp_port, name_len = struct.unpack('!4sH B', data)
+        data = recv_with_timeout(client_socket, name_len, 5)
+        name = data.decode('utf-8')
 
         if name in clients:
             client_socket.send(struct.pack('!BB', 0, 2))  # Fehler: Nickname nicht unique
