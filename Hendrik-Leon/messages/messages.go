@@ -25,6 +25,8 @@ const (
 	ClientDisconnectedS2C
 	Broadcast
 	DisconnectC2S
+	PeerToPeerRequest
+	PeerToPeerMessage
 )
 
 const (
@@ -81,6 +83,12 @@ func WriteErrorMessage(w io.Writer, code ErrorCode) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func ReadError(r io.Reader) ErrorCode {
+	code := [1]byte{}
+	r.Read(code[:])
+	return ErrorCode(code[0])
 }
 
 type RegistrationRequestMessage struct {
@@ -162,13 +170,8 @@ func WriteRegistrationResponse(w io.Writer, list map[net.Conn]ClientInfo) {
 	}
 }
 
+// assumes message_id was already read
 func ReadRegistrationResponseMessage(r io.Reader) (RegistrationResponseMessage, error) {
-	message_id := [1]byte{}
-	r.Read(message_id[:])
-	if MessageID(message_id[0]) != RegistrationResponse {
-		return RegistrationResponseMessage{}, fmt.Errorf("Server responded with invalid message ID (%d)", message_id[0])
-	}
-
 	n_clients_slice := [4]byte{}
 	r.Read(n_clients_slice[:])
 	n_clients := ByteOrder.Uint32(n_clients_slice[:])
@@ -258,5 +261,61 @@ func ReadClientDisconnectMessage(r io.Reader) ClientDisconnectedMessage {
 		Message_id: ClientDisconnectedS2C,
 		Name_len: name_len[0],
 		Name: string(name),
+	}
+}
+
+type PeerToPeerRequestMessage struct  {
+	Message_id MessageID
+	Tcp_port uint16
+}
+
+func WritePeerToPeerRequestMessage(w io.Writer, tcp_port uint16) error {
+	msg := []byte{byte(PeerToPeerRequest), 0, 0}
+	ByteOrder.PutUint16(msg[1:], tcp_port)
+	_, err := w.Write(msg)
+	return err
+}
+
+func ReadPeerToPeerRequestMessage(conn *net.UDPConn) ( PeerToPeerRequestMessage, *net.UDPAddr, ErrorCode ) {
+	b := [3]byte{}
+	_, addr, _ := conn.ReadFromUDP(b[:])
+	if b[0] != byte(PeerToPeerRequest) {
+		return PeerToPeerRequestMessage{}, nil, InvalidMessageID
+	}
+	return PeerToPeerRequestMessage{
+		Message_id: PeerToPeerRequest,
+		Tcp_port: ByteOrder.Uint16(b[1:]),
+	}, addr, NoError
+}
+
+type PeerToPeerMessageMessage struct {
+	Message_id MessageID
+	Msg_len uint16
+	Msg string
+}
+
+func WritePeerToPeerMessage(w io.Writer, msg string) error {
+	if uint16(len(msg)) > ^uint16(0) {
+		return fmt.Errorf("message is too long!")
+	}
+
+	binary.Write(w, ByteOrder, byte(PeerToPeerMessage))
+	binary.Write(w, ByteOrder, uint16(len(msg)))
+	binary.Write(w, ByteOrder, []byte(msg))
+	return nil
+}
+
+// assumes message_id was already read
+func ReadPeerToPeerMessage(r io.Reader) PeerToPeerMessageMessage {
+	msg_len_slice := [2]byte{}
+	r.Read(msg_len_slice[:])
+	msg_len := ByteOrder.Uint16(msg_len_slice[:])
+
+	msg := make([]byte, msg_len)
+	r.Read(msg)
+	return PeerToPeerMessageMessage{
+		Message_id: PeerToPeerMessage,
+		Msg_len: msg_len,
+		Msg: string(msg),
 	}
 }

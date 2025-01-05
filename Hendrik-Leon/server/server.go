@@ -34,7 +34,7 @@ func main() {
 		// Accept new connections
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println(err)
+			slog.Error("error accepting connection", "err", err)
 			continue
 		}
 		slog.Info("got a new connection", "remote-addr", conn.RemoteAddr())
@@ -58,8 +58,17 @@ func handleConnection(conn net.Conn) {
 		messages.WriteErrorMessage(conn, errCode)
 		return
 	}
+	slog.Info("read registration request")
 
 	client_list_mutex.Lock()
+	for _, info := range client_list {
+		host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+		if info.Client_port == regReq.Client.Client_port && host == regReq.Client.Client_ip.String() {
+			messages.WriteErrorMessage(conn, messages.IPPortNotUnique)
+			return
+		}
+	}
+
 	client_list[conn] = regReq.Client
 
 	messages.WriteRegistrationResponse(conn, client_list)
@@ -118,6 +127,9 @@ func handleConnection(conn net.Conn) {
 			delete(client_list, conn)
 
 			client_list_mutex.Unlock()
+		case messages.Error:
+			code := messages.ReadError(conn)
+			slog.Error("Client responded with error", "code", code)
 		default:
 			messages.WriteErrorMessage(conn, messages.InvalidMessageID)
 		}
