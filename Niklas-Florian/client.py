@@ -2,28 +2,24 @@ import socket
 import struct
 import threading
 import time
-
-# Server-Verbindungsdaten
-SERVER_HOST = '127.0.0.1'  # IP-Adresse des Servers
-SERVER_PORT = 7777         # Port des Servers
-UDP_PORT = 8888            # Lokaler UDP-Port
+import argparse
 
 # Globale Variablen
 running = True
 
-# Socket für TCP und UDP erstellen
+# Sockets für TCP und UDP erstellen
 tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-udp_socket.bind(('0.0.0.0', UDP_PORT))
+
 
 # Registrierung beim Server
-def register_with_server(nickname):
+def register_with_server(nickname, server_host, server_port, udp_port):
     try:
-        tcp_socket.connect((SERVER_HOST, SERVER_PORT))
-        print(f"Verbunden mit Server {SERVER_HOST}:{SERVER_PORT}")
+        tcp_socket.connect((server_host, server_port))
+        print(f"Verbunden mit Server {server_host}:{server_port}")
         
         ip = socket.inet_aton(socket.gethostbyname(socket.gethostname()))
-        msg = struct.pack('!B4sH B', 1, ip, UDP_PORT, len(nickname)) + nickname.encode('utf-8')
+        msg = struct.pack('!B4sH B', 1, ip, udp_port, len(nickname)) + nickname.encode('utf-8')
         tcp_socket.send(msg)
         
         response = tcp_socket.recv(1024)
@@ -33,6 +29,7 @@ def register_with_server(nickname):
         print(f"Fehler bei der Registrierung: {e}")
         tcp_socket.close()
 
+
 # Broadcast senden
 def send_broadcast(message):
     try:
@@ -41,6 +38,7 @@ def send_broadcast(message):
         print("Broadcast gesendet.")
     except Exception as e:
         print(f"Fehler beim Broadcast: {e}")
+
 
 # Peer-to-Peer Chat starten
 def start_p2p_chat(target_ip, target_port, message):
@@ -55,6 +53,7 @@ def start_p2p_chat(target_ip, target_port, message):
         peer_socket.close()
     except Exception as e:
         print(f"Fehler beim P2P-Chat: {e}")
+
 
 # Nachrichten empfangen (TCP & UDP)
 def receive_messages():
@@ -76,22 +75,36 @@ def receive_messages():
         except Exception as e:
             print(f"Fehler beim Empfangen von Nachrichten: {e}")
 
+
 # Disconnect vom Server
 def disconnect_from_server():
     global running
     running = False
     try:
         tcp_socket.send(struct.pack('!B', 7))
-        time.sleep(1)
         tcp_socket.close()
         print("Vom Server abgemeldet.")
     except Exception as e:
         print(f"Fehler beim Abmelden: {e}")
 
+
 # Hauptprogramm
 def main():
+    parser = argparse.ArgumentParser(description='TCP/UDP Chat-Client')
+    parser.add_argument('--host', type=str, default='127.0.0.1', help='Server-IP-Adresse (Standard: 127.0.0.1)')
+    parser.add_argument('--tcp-port', type=int, default=7777, help='Server-TCP-Port (Standard: 7777)')
+    parser.add_argument('--udp-port', type=int, default=8888, help='Lokaler UDP-Port (Standard: 8888)')
+    args = parser.parse_args()
+
+    SERVER_HOST = args.host
+    SERVER_PORT = args.tcp_port
+    UDP_PORT = args.udp_port
+
+    # UDP-Port binden
+    udp_socket.bind(('0.0.0.0', UDP_PORT))
+
     nickname = input("Gib deinen Nickname ein: ")
-    register_with_server(nickname)
+    register_with_server(nickname, SERVER_HOST, SERVER_PORT, UDP_PORT)
     
     receiver_thread = threading.Thread(target=receive_messages)
     receiver_thread.start()
@@ -100,7 +113,8 @@ def main():
         while running:
             print("\n1: Broadcast senden")
             print("2: Peer-to-Peer Chat starten")
-            print("3: Disconnect")
+            print("3: Client-Liste anzeigen")
+            print("4: Disconnect")
             choice = input("Wähle eine Option: ")
             if choice == '1':
                 message = input("Broadcast-Nachricht: ")
@@ -111,10 +125,13 @@ def main():
                 message = input("Nachricht: ")
                 start_p2p_chat(target_ip, target_port, message)
             elif choice == '3':
+                get_client_list()
+            elif choice == '4':
                 disconnect_from_server()
                 break
     except KeyboardInterrupt:
         disconnect_from_server()
+
 
 if __name__ == '__main__':
     main()

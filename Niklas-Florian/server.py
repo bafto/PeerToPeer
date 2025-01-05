@@ -118,6 +118,7 @@ def handel_broadcast(data, client_socket):  # Msg-Id: 6
 
 def handel_disconnect_message(data, client_socket):  # Msg-Id: 7
     disconnected_client_name = None
+
     for name, (sock, ip, port) in list(clients.items()):
         if sock == client_socket:
             disconnected_client_name = name
