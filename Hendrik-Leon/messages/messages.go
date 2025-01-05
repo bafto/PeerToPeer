@@ -1,6 +1,7 @@
 package messages
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -226,6 +227,14 @@ func WriteNewClientConnectedMessage(w io.Writer, client ClientInfo) {
 	WriteClientInfo(w, client)
 }
 
+// assumes message_id was already read
+func ReadNewClientConnectedMessage(r io.Reader) NewClientConnectedMessage {
+	return NewClientConnectedMessage{
+		Message_id: NewClientConnected,
+		Client: ReadClientInfo(r),
+	}
+}
+
 type ClientDisconnectedMessage struct {
 	Message_id MessageID
 	Name_len   byte
@@ -236,4 +245,18 @@ func WriteClientDisconnectMessage(w io.Writer, name string) {
 	binary.Write(w, ByteOrder, byte(ClientDisconnectedS2C))
 	binary.Write(w, ByteOrder, byte(len(name)))
 	w.Write([]byte(name))
+}
+
+// assumes message_id was already read
+func ReadClientDisconnectMessage(r io.Reader) ClientDisconnectedMessage {
+	reader := bufio.NewReader(r)
+	name_len := [1]byte{}
+	reader.Read(name_len[:])
+	name := make([]byte, name_len[0])
+	reader.Read(name)
+	return ClientDisconnectedMessage{
+		Message_id: ClientDisconnectedS2C,
+		Name_len: name_len[0],
+		Name: string(name),
+	}
 }
