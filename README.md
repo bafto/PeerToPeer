@@ -3,10 +3,10 @@
 ## Allgemein
 
 ### Message IDs
-- 0: Fehler
+- 0: Error
 - 1: Registrierung
-- 3: Client Liste Erhalten
-- 4: Neuer Client connected
+- 2: Registrierung Antwort
+- 4: Neuer Client Connected
 - 5: Client Disconnected Notification
 - 6: Broadcast
 - 7: Client Disconnect Message
@@ -18,13 +18,13 @@
 - 1 Byte Msg-ID (0 für Error)
 - 1 Byte Error-Code
 
-### Error Codes (FC)
+### Error Codes (EC)
 
 - 0: Unbekannte Msg-ID
 - 1: (IP, Port) nicht unique
 - 2: Nickname nicht unique
-- 3: Länge vom Nickname > 0
-- 4: Name invalid UTF-8
+- 3: Textlänge ist null
+- 4: Text nicht UTF-8
 - 5: Client Liste invalid
 
 ```C
@@ -34,14 +34,14 @@ struct ErrorMessage {
 }
 ```
 
-## Registrierung beim Server (ID: 1,2)
-
-- Client verbindet sich zum Server via TCP auf Port 7777
-    - 1 Byte Msg-ID (1 für Registrieren)
-    - 4 Byte IP (FC: 1)
-    - 2 Byte UDP Port (FC: 1)
-    - 1 Byte Länge des Nickname in Byte (N) ; Länge > 0, Unique (FC: 3)
-    - N Byte Name (wie in vorheriger Länge angegeben, UTF-8) (Timeout 3 Sekunden) (FC: 2, 4)
+## Messages
+### Registrierung beim Server (Clientside, ID: 1)
+Client verbindet sich zum Server via TCP auf Port 7777
+  - 1 Byte Msg-ID (1 für Registrieren)
+  - 4 Byte IP (EC: 1)
+  - 2 Byte UDP Port (EC: 1)
+  - 1 Byte Länge des Nickname in Byte (N) (EC: 3)
+  - N Byte UTF-8 Name (Timeout 3 Sekunden) (EC: 2, 4)
 
 ```C
 struct ClientInfo {
@@ -57,14 +57,15 @@ struct RegistrationRequest {
 }
 ```
 
-- Server Antwort mit der momentanen Client Liste
-    - 1 Byte Msg-ID (2 für Registrierung erfolgreich)
-    - 4 Byte Anzahl Clients (M)
-    - M Mal:
-        - 4 Byte IP
-        - 2 Byte UDP Port
-        - 1 Byte Länge des Nickname mit Wert N ; Länge > 0, Unique
-        - N Byte Name (wie in vorheriger Länge angegeben)
+### Registrierung Antwort (Serverside, ID: 2)
+Server Antwort mit der momentanen Client Liste
+  - 1 Byte Msg-ID (2 für Registrierung erfolgreich)
+  - 4 Byte Anzahl Clients (M)
+  - M Mal:
+      - 4 Byte IP
+      - 2 Byte UDP Port
+      - 1 Byte Länge des Nickname mit Wert N (EC: 3)
+      - N Byte UTF-8 Name (EC: 2, 4)
 
 ```C
 struct RegistrationResponse {
@@ -74,9 +75,11 @@ struct RegistrationResponse {
 }
 ```
 
-## Client Listen Updates 
+### Neuer Client Connected (Serverside, ID: 4)
+Der Server schickt jedem anderem Client eine NewClientConnected Message wenn sich ein Client zum Server verbindet.
+- 1 Byte Message ID (4)
+- ClientInfo
 
-### Neuer Client (ID: 4)
 
 ```C
 struct NewClientConnected {
@@ -85,7 +88,12 @@ struct NewClientConnected {
 }
 ```
 
-### Client Disconnected (Server zu Client, ID: 5)
+### Client Disconnected (Serverside, ID: 5)
+Der Server schickt jedem anderem Client eine ClientDisconnected Message wenn die Verbindung zum Server beendet wird.
+
+- 1 Byte Message ID (5)
+- 1 Byte Namenslänge N (EC: 3)
+- N Byte UTF-8 Name (EC: 2, 4)
 
 ```C
 struct ClientDisconnected {
@@ -95,11 +103,12 @@ struct ClientDisconnected {
 }
 ```
 
-## Broadcast (ID: 6)
+## Broadcast (Client+Server-side, ID: 6)
+Ein Client schickt eine Broadcast Message an den Server. Der Server schickt daraufhin eine Broadcast Message an alle Clients. Timeout 5 Sekunden
 
-Timeout 5 Sekunden
-Ein Client schickt eine Broadcast Message an den Server. Der Server schickt daraufhin eine Broadcast Message an alle Clients.
-
+- 1 Byte Message ID (6)
+- 4 Byte Nachrichtlänge N (EC: 3)
+- N Byte Nachricht (EC: 4)
 
 ```C
 struct BroadcastMessage {
@@ -109,9 +118,8 @@ struct BroadcastMessage {
 }
 ```
 
-
-## Client Disconnect (Client zu Server, ID: 7)
-
+## Client Disconnect (Clientside, ID: 7)
+Client schickt dem Server eine Client Disconnect Message, wenn er sich Disconnecten will
 ```C
 struct DisconnectMessage {
     uint8_t msg_id; // 7
@@ -120,7 +128,12 @@ struct DisconnectMessage {
 
 ## Peer-To-Peer
 
-### Chat Anfrage (via UDP von Client zu Client, ID: 8)
+### Chat Anfrage (UDP, Client zu Client, ID: 8)
+Client schickt dem Kommunikationspartner eine Chat Anfrage.
+- 1 Byte Message ID
+- 4 Byte TCP Port
+- 1 Byte Namenslänge N (EC: 3)
+- N Byte Name (EC: 4)
 
 - 3 Retries im Abstand von 2 Sekunden
 
@@ -128,10 +141,16 @@ struct DisconnectMessage {
 struct PeerToPeerRequest {
     uint8_t msg_id; // 8
     uint16_t tcp_port;
+	uint8_t name_len; // N
+    uint8_t name[N]; // utf-8
 }
 ```
 
-### Peer-To-Peer Message (ID: 9)
+### Peer-To-Peer Message (UDP, Client zu Client, ID: 9)
+Client schickt seinem Kommunikationspartner eine Nachricht
+- 1 Byte Message ID
+- 4 Byte Nachrichtlänge N (EC: 3)
+- N Byte Nachricht (EC: 4)
 
 ```C
 struct PeerToPeerMessage {
