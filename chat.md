@@ -3,16 +3,15 @@
 ## Allgemein
 
 ### Message IDs
-
-0: Fehler
-1: Registrierung
-3: Client Liste Erhalten
-4: Neuer Client connected
-5: Client Disconnected Notification
-6: Broadcast
-7: Client Disconnect Message
-8: Peer-To-Peer Chat Anfrage
-9: Peer-To-Peer Nachricht
+- 0: Fehler
+- 1: Registrierung
+- 3: Client Liste Erhalten
+- 4: Neuer Client connected
+- 5: Client Disconnected Notification
+- 6: Broadcast
+- 7: Client Disconnect Message
+- 8: Peer-To-Peer Chat Anfrage
+- 9: Peer-To-Peer Nachricht
 
 ## Error Message
 
@@ -21,12 +20,12 @@
 
 ### Error Codes (FC)
 
-0: Unbekannte Msg-ID
-1: (IP, Port) nicht unique
-2: Nickname nicht unique
-3: Länge vom Nickname > 0
-4: Name invalid UTF-8
-5: Client Liste invalid
+- 0: Unbekannte Msg-ID
+- 1: (IP, Port) nicht unique
+- 2: Nickname nicht unique
+- 3: Länge vom Nickname > 0
+- 4: Name invalid UTF-8
+- 5: Client Liste invalid
 
 ```C
 struct ErrorMessage {
@@ -35,7 +34,7 @@ struct ErrorMessage {
 }
 ```
 
-## Registrierung beim Server
+## Registrierung beim Server (ID: 1,2)
 
 - Client verbindet sich zum Server via TCP auf Port 7777
     - 1 Byte Msg-ID (1 für Registrieren)
@@ -77,7 +76,7 @@ struct RegistrationResponse {
 
 ## Client Listen Updates 
 
-### Neuer Client
+### Neuer Client (ID: 4)
 
 ```C
 struct NewClientConnected {
@@ -86,7 +85,7 @@ struct NewClientConnected {
 }
 ```
 
-### Client Disconnected (Server zu Client)
+### Client Disconnected (Server zu Client, ID: 5)
 
 ```C
 struct ClientDisconnected {
@@ -96,9 +95,11 @@ struct ClientDisconnected {
 }
 ```
 
-## Broadcast
+## Broadcast (ID: 6)
 
 Timeout 5 Sekunden
+Ein Client schickt eine Broadcast Message an den Server. Der Server schickt daraufhin eine Broadcast Message an alle Clients.
+
 
 ```C
 struct BroadcastMessage {
@@ -108,9 +109,8 @@ struct BroadcastMessage {
 }
 ```
 
-Ein Client schickt eine Broadcast Message an den Server. Der Server schickt daraufhin eine Broadcast Message an alle Clients.
 
-## Client Disconnect (Client zu Server)
+## Client Disconnect (Client zu Server, ID: 7)
 
 ```C
 struct DisconnectMessage {
@@ -120,7 +120,7 @@ struct DisconnectMessage {
 
 ## Peer-To-Peer
 
-### Chat Anfrage (via UDP von Client zu Client)
+### Chat Anfrage (via UDP von Client zu Client, ID: 8)
 
 - 3 Retries im Abstand von 2 Sekunden
 
@@ -131,7 +131,7 @@ struct PeerToPeerRequest {
 }
 ```
 
-### Peer-To-Peer Message
+### Peer-To-Peer Message (ID: 9)
 
 ```C
 struct PeerToPeerMessage {
