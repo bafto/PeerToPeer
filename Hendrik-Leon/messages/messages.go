@@ -234,7 +234,7 @@ func WriteNewClientConnectedMessage(w io.Writer, client ClientInfo) {
 func ReadNewClientConnectedMessage(r io.Reader) NewClientConnectedMessage {
 	return NewClientConnectedMessage{
 		Message_id: NewClientConnected,
-		Client: ReadClientInfo(r),
+		Client:     ReadClientInfo(r),
 	}
 }
 
@@ -259,39 +259,47 @@ func ReadClientDisconnectMessage(r io.Reader) ClientDisconnectedMessage {
 	reader.Read(name)
 	return ClientDisconnectedMessage{
 		Message_id: ClientDisconnectedS2C,
-		Name_len: name_len[0],
-		Name: string(name),
+		Name_len:   name_len[0],
+		Name:       string(name),
 	}
 }
 
-type PeerToPeerRequestMessage struct  {
+type PeerToPeerRequestMessage struct {
 	Message_id MessageID
-	Tcp_port uint16
+	Tcp_port   uint16
+	Name_len   byte
+	Name       string
 }
 
-func WritePeerToPeerRequestMessage(w io.Writer, tcp_port uint16) error {
+func WritePeerToPeerRequestMessage(w io.Writer, tcp_port uint16, nickname string) error {
 	msg := []byte{byte(PeerToPeerRequest), 0, 0}
 	ByteOrder.PutUint16(msg[1:], tcp_port)
+	msg = append(msg, byte(len(nickname)))
+	msg = append(msg, []byte(nickname)...)
 	_, err := w.Write(msg)
 	return err
 }
 
-func ReadPeerToPeerRequestMessage(conn *net.UDPConn) ( PeerToPeerRequestMessage, *net.UDPAddr, ErrorCode ) {
-	b := [3]byte{}
+func ReadPeerToPeerRequestMessage(conn *net.UDPConn) (PeerToPeerRequestMessage, *net.UDPAddr, ErrorCode) {
+	b := [260]byte{}
 	_, addr, _ := conn.ReadFromUDP(b[:])
 	if b[0] != byte(PeerToPeerRequest) {
 		return PeerToPeerRequestMessage{}, nil, InvalidMessageID
 	}
+	name_len := b[3]
+
 	return PeerToPeerRequestMessage{
 		Message_id: PeerToPeerRequest,
-		Tcp_port: ByteOrder.Uint16(b[1:]),
+		Tcp_port:   ByteOrder.Uint16(b[1:3]),
+		Name_len: name_len,
+		Name: string(b[4:4+name_len]),
 	}, addr, NoError
 }
 
 type PeerToPeerMessageMessage struct {
 	Message_id MessageID
-	Msg_len uint16
-	Msg string
+	Msg_len    uint16
+	Msg        string
 }
 
 func WritePeerToPeerMessage(w io.Writer, msg string) error {
@@ -315,7 +323,7 @@ func ReadPeerToPeerMessage(r io.Reader) PeerToPeerMessageMessage {
 	r.Read(msg)
 	return PeerToPeerMessageMessage{
 		Message_id: PeerToPeerMessage,
-		Msg_len: msg_len,
-		Msg: string(msg),
+		Msg_len:    msg_len,
+		Msg:        string(msg),
 	}
 }

@@ -50,11 +50,12 @@ func main() {
 var (
 	client_list       = make(map[string]messages.ClientInfo, 8)
 	client_list_mutex sync.Mutex
-	connected_peers = sync.Map{}
-	current_port = atomic.Uint32{}
+	connected_peers   = sync.Map{}
+	current_port      = atomic.Uint32{}
 )
 
 func handleConnection(conn net.Conn) {
+	defer conn.Close()
 	stdinReader := bufio.NewReader(os.Stdin)
 	fmt.Printf("Enter your nickname: ")
 	name, _ := stdinReader.ReadString('\n')
@@ -164,7 +165,6 @@ const help = `You can now enter the following commands:
 	broadcast <message>: broadcast <message> to all other clients
 	chat <nickname>: send a peer-to-peer chat request to <nickname> or (if already connected) send a message`
 
-
 func handleUserInput(stdin *bufio.Reader, conn net.Conn, name string, wg *sync.WaitGroup, log chan<- string) {
 	defer wg.Done()
 	log <- help
@@ -232,23 +232,22 @@ func handleUserInput(stdin *bufio.Reader, conn net.Conn, name string, wg *sync.W
 			}
 			client_list_mutex.Unlock()
 
-			connectPeerToPeer(client_info, wg, log)
+			connectPeerToPeer(client_info, name, wg, log)
 		default:
 			log <- "unknown command '" + cmds[0] + "'"
 		}
 	}
 }
 
-func connectPeerToPeer(client_info messages.ClientInfo, wg *sync.WaitGroup, log chan<- string) {
+func connectPeerToPeer(client_info messages.ClientInfo, nickname string, wg *sync.WaitGroup, log chan<- string) {
 	log <- "connecting to " + client_info.Name
-	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d",client_info.Client_ip.String(), client_info.Client_port))
+	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", client_info.Client_ip.String(), client_info.Client_port))
 	if err != nil {
 		log <- "could not resolve client address: " + err.Error()
 		return
 	}
-	localAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", "localhost", client_port))
 
-	conn, err := net.DialUDP("udp", localAddr, udpAddr)
+	conn, err := net.DialUDP("udp", nil, udpAddr)
 	if err != nil {
 		log <- "could not connect to peer: " + err.Error()
 		return
@@ -260,20 +259,20 @@ func connectPeerToPeer(client_info messages.ClientInfo, wg *sync.WaitGroup, log 
 
 	timer := time.NewTimer(time.Second * 2)
 
-	if err := messages.WritePeerToPeerRequestMessage(conn, tcp_port); err != nil {
+	if err := messages.WritePeerToPeerRequestMessage(conn, tcp_port, nickname); err != nil {
 		log <- "Failed to request peer to peer chat: " + err.Error()
 		return
 	}
 
 	for range 3 {
 		select {
-		case <- timer.C:
+		case <-timer.C:
 			log <- "retrying peer connection"
 			timer.Reset(time.Second * 2)
-			if err := messages.WritePeerToPeerRequestMessage(conn, tcp_port); err != nil {
+			if err := messages.WritePeerToPeerRequestMessage(conn, tcp_port, nickname); err != nil {
 				log <- "Failed to request peer to peer chat: " + err.Error()
 			}
-		case <- connected:
+		case <-connected:
 			log <- "connected to " + client_info.Name
 			return
 		}
@@ -314,7 +313,7 @@ func handlePeerToPeerChatServer(tcp_port uint16, nickname string, connected chan
 func handlePeerToPeerChatClient(wg *sync.WaitGroup, log chan<- string) {
 	defer wg.Done()
 
-	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d","localhost", client_port))
+	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", "localhost", client_port))
 	if err != nil {
 		log <- "could not resolve client address: " + err.Error()
 		return
@@ -340,29 +339,17 @@ func handlePeerToPeerChatClient(wg *sync.WaitGroup, log chan<- string) {
 		}
 
 		peerConn, err := net.DialTCP("tcp", nil, tcpAddr)
-
 		if err != nil {
 			log <- "Error connecting to peer: " + err.Error()
 			continue
 		}
 
-		nickname := ""
-		client_list_mutex.Lock()
-		for name, info := range client_list {
-			log <- "checking if " + addr.IP.String() + " equals " + info.Client_ip.String() + " and " + fmt.Sprintf("%d", info.Client_port) + " equals " + fmt.Sprintf("%d", addr.AddrPort().Port())
-			if addr.IP.Equal(info.Client_ip) && info.Client_port == addr.AddrPort().Port() {
-				nickname = name
-				break
-			}
-		}
-		client_list_mutex.Unlock()
-
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			connected_peers.Store(nickname, peerConn)
-			go handlePeerToPeerMessages(peerConn, nickname, log)
+			connected_peers.Store(req.Name, peerConn)
+			go handlePeerToPeerMessages(peerConn, req.Name, log)
 		}()
 	}
 }
@@ -380,8 +367,8 @@ func handlePeerToPeerMessages(conn net.Conn, nickname string, log chan<- string)
 
 		switch messages.MessageID(msg_id[0]) {
 		case messages.PeerToPeerMessage:
-		msg := messages.ReadPeerToPeerMessage(conn)
-		log <- nickname + ": " + msg.Msg
+			msg := messages.ReadPeerToPeerMessage(conn)
+			log <- nickname + ": " + msg.Msg
 		case messages.Error:
 			log <- fmt.Sprintf("Error from %s: %d", nickname, messages.ReadError(conn))
 		default:

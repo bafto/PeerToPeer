@@ -5,7 +5,6 @@ MESSAGE_TYPES = (
     (0, "Fehler"),
     (1, "Registrierung"),
     (2, "Registrierungs Antwort (Client Liste)"),
-    (3, "Client Liste Erhalten"),
     (4, "Neuer Client connected"),
     (5, "Client Disconnected Notification"),
     (6, "Broadcast"),
