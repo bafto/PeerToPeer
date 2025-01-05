@@ -12,6 +12,29 @@ clients = {}  # Hier speichern wir die Client-Informationen als Dictionary
 tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+def recv_with_timeout(client_socket, expected_length, timeout):
+
+    data = b''  # Leerer Puffer für die empfangenen Daten
+    start_time = time.time()  # Zeitstempel für Timeout
+
+    while len(data) < expected_length:
+        remaining_time = timeout - (time.time() - start_time)
+        if remaining_time <= 0:
+            print("Timeout erreicht, bevor die erwarteten Daten empfangen wurden.")
+            return None
+
+        # Empfange Daten mit der verbleibenden Zeit
+        chunk = client_socket.recv(min(1024, expected_length - len(data)))
+
+        if not chunk:  # Verbindung wurde geschlossen oder ein Fehler ist aufgetreten
+            print("Verbindung geschlossen oder Fehler beim Empfangen.")
+            return None
+        
+        data += chunk
+
+    return data
+
+
 # Registrierung beim Server
 def register_with_server(nickname, server_host, server_port, udp_port):
     try:
@@ -68,22 +91,18 @@ def receive_messages():
     global running
     while running:
         try:
-            data = tcp_socket.recv(1024)
-            if not data:
-                break
-            msg_id = data[0]
+            msg_id = recv_with_timeout(tcp_socket, expected_length=1, timeout=2)
             if msg_id == 4:
                 print("Neuer Client verbunden.")
-                # Neuer Client wird hinzugefügt
-                ip = socket.inet_ntoa(data[1:5])
-                udp_port = struct.unpack('!H', data[5:7])[0]
-                name_len = data[7]
-                name = data[8:8+name_len].decode('utf-8')
-                print("neuer name ist:::::: ", name)
-                # Nur einen neuen Client hinzufügen, wenn er noch nicht existiert
+                
+                ip = recv_with_timeout(tcp_socket, expected_length=4, timeout=2)
+                udp_port = recv_with_timeout(tcp_socket, expected_length=2, timeout=2)
+                name_len = recv_with_timeout(tcp_socket, expected_length=1, timeout=2)
+                name = recv_with_timeout(tcp_socket, expected_length=name_len, timeout=2)
                 if name not in clients:
                     clients[name] = {'ip': ip, 'udp_port': udp_port}
                 print(f"Neuer Client: {name}, IP: {ip}, UDP Port: {udp_port}")
+                
             elif msg_id == 5:
                 print("Client hat sich abgemeldet.")
                 # Client abgemeldet, entferne ihn aus der Liste
@@ -98,6 +117,8 @@ def receive_messages():
                 print(f"Broadcast erhalten: {message}")
         except Exception as e:
             print(f"Fehler beim Empfangen von Nachrichten: {e}")
+
+
 
 # Client-Liste anzeigen
 def get_client_list():

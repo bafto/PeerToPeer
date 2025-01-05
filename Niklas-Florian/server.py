@@ -10,7 +10,6 @@ SERVER_PORT = 7777
 clients = {}  # Speichert die Verbindungen der Clients
 
 def recv_with_timeout(client_socket, expected_length, timeout):
-
     data = b''  # Leerer Puffer für die empfangenen Daten
     start_time = time.time()  # Zeitstempel für Timeout
 
@@ -28,7 +27,6 @@ def recv_with_timeout(client_socket, expected_length, timeout):
             return None
         
         data += chunk
-
     return data
 
 def handle_client(client_socket):
@@ -108,6 +106,14 @@ def handel_neuer_client_connected(client_socket, new_client_name, new_client_ip,
                 msg = struct.pack('!I H B', ip_as_int, new_client_port, name_len) + name_encoded
 
                 response = struct.pack('!B H', 4, len(msg)) + msg
+
+                """
+                uint8_t msg_id; // 4
+                uint32_t client_ip;
+                uint16_t client_udp_port;
+                uint8_t name_len; // N
+                uint8_t name[N]; // utf-8
+                """
 
                 sock.send(response)
             except Exception as e:
