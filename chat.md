@@ -6,7 +6,6 @@
 
 0: Fehler
 1: Registrierung
-2: Registrierungs Antwort (Client Liste)
 3: Client Liste Erhalten
 4: Neuer Client connected
 5: Client Disconnected Notification
@@ -75,10 +74,6 @@ struct RegistrationResponse {
     struct ClientInfo clients[M];
 }
 ```
-
-- Client Antwortet wenn Liste erfolgreich erhalten wurde
-- 1 Byte Msg-ID (3)
-- Oder Fehler falls Liste invalid (FC: 5)
 
 ## Client Listen Updates 
 
