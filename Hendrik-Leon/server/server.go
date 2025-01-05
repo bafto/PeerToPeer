@@ -60,28 +60,29 @@ func handleConnection(conn net.Conn) {
 	}
 	slog.Info("read registration request")
 
-	client_list_mutex.Lock()
-	for _, info := range client_list {
-		host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
-		if info.Client_port == regReq.Client.Client_port && host == regReq.Client.Client_ip.String() {
-			messages.WriteErrorMessage(conn, messages.IPPortNotUnique)
-			return
-		}
-	}
-
-	client_list[conn] = regReq.Client
-
-	messages.WriteRegistrationResponse(conn, client_list)
-
-	for client_conn := range client_list {
-		if client_conn == conn {
-			continue
+	func() {
+		client_list_mutex.Lock()
+		defer client_list_mutex.Unlock()
+		for _, info := range client_list {
+			host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+			if info.Client_port == regReq.Client.Client_port && host == regReq.Client.Client_ip.String() {
+				messages.WriteErrorMessage(conn, messages.IPPortNotUnique)
+				return
+			}
 		}
 
-		messages.WriteNewClientConnectedMessage(client_conn, regReq.Client)
-	}
+		client_list[conn] = regReq.Client
 
-	client_list_mutex.Unlock()
+		messages.WriteRegistrationResponse(conn, client_list)
+
+		for client_conn := range client_list {
+			if client_conn == conn {
+				continue
+			}
+
+			messages.WriteNewClientConnectedMessage(client_conn, regReq.Client)
+		}
+	}()
 
 	broadcastClientDisconnect := func() {
 		for client_conn := range client_list {
@@ -100,33 +101,39 @@ func handleConnection(conn net.Conn) {
 		if err != nil {
 			slog.Info("Client Disconnected", "remote-addr", conn.RemoteAddr())
 
-			client_list_mutex.Lock()
-			if _, ok := client_list[conn]; ok {
-				slog.Warn("Client did not yet send a disconnect message")
-				broadcastClientDisconnect()
-			}
+			func() {
+				client_list_mutex.Lock()
+				defer client_list_mutex.Unlock()
 
-			client_list_mutex.Unlock()
+				if _, ok := client_list[conn]; ok {
+					slog.Warn("Client did not yet send a disconnect message")
+					broadcastClientDisconnect()
+				}
+			}()
 			return
 		}
 
 		switch messages.MessageID(msg_id[0]) {
 		case messages.Broadcast:
 			msg := messages.ReadBroadcastMessage(conn)
-			client_list_mutex.Lock()
+			func() {
+				client_list_mutex.Lock()
 
-			for client_conn := range client_list {
-				messages.WriteBroadcastMessage(client_conn, msg.Message)
-			}
+				for client_conn := range client_list {
+					messages.WriteBroadcastMessage(client_conn, msg.Message)
+				}
 
-			client_list_mutex.Unlock()
+				defer client_list_mutex.Unlock()
+			}()
+
 		case messages.DisconnectC2S:
-			client_list_mutex.Lock()
+			func() {
+				client_list_mutex.Lock()
+				defer client_list_mutex.Unlock()
 
-			broadcastClientDisconnect()
-			delete(client_list, conn)
-
-			client_list_mutex.Unlock()
+				broadcastClientDisconnect()
+				delete(client_list, conn)
+			}()
 		case messages.Error:
 			code := messages.ReadError(conn)
 			slog.Error("Client responded with error", "code", code)

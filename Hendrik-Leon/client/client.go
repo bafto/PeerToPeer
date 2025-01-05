@@ -87,13 +87,13 @@ func handleConnection(conn net.Conn) {
 		os.Exit(1)
 	}
 
-	client_list_mutex.Lock()
-
-	for _, client := range regResp.Clients {
-		client_list[client.Name] = client
-	}
-
-	client_list_mutex.Unlock()
+	func() {
+		client_list_mutex.Lock()
+		defer client_list_mutex.Unlock()
+		for _, client := range regResp.Clients {
+			client_list[client.Name] = client
+		}
+	}()
 
 	fmt.Println("Successfully registered at server")
 
