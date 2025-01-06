@@ -67,7 +67,8 @@ def register_with_server(nickname, server_host, server_port, udp_port):
 # Broadcast senden
 def send_broadcast(message):
     try:
-        msg = struct.pack('!B H', 6, len(message)) + message.encode('utf-8')
+        message = message.encode('utf-8')
+        msg = struct.pack('!B H', 6, len(message)) + message
         tcp_socket.send(msg)
         print("Broadcast gesendet.")
     except Exception as e:
@@ -92,31 +93,56 @@ def receive_messages():
     while running:
         try:
             msg_id = recv_with_timeout(tcp_socket, expected_length=1, timeout=2)
-            if msg_id == 4:
-                print("Neuer Client verbunden.")
-                
+            
+            if msg_id is None or len(msg_id) == 0:
+                print("Keine gültige Nachricht empfangen.")
+                continue
+
+            # Konvertiere msg_id korrekt zu einem Integer
+            msg_id_int = msg_id[0]
+            print(f"Empfangene msg_id: {msg_id_int}")
+
+            if msg_id_int == 4:
                 ip = recv_with_timeout(tcp_socket, expected_length=4, timeout=2)
+                ip = socket.inet_ntoa(ip)  
+
                 udp_port = recv_with_timeout(tcp_socket, expected_length=2, timeout=2)
-                name_len = recv_with_timeout(tcp_socket, expected_length=1, timeout=2)
-                name = recv_with_timeout(tcp_socket, expected_length=name_len, timeout=2)
-                if name not in clients:
-                    clients[name] = {'ip': ip, 'udp_port': udp_port}
-                print(f"Neuer Client: {name}, IP: {ip}, UDP Port: {udp_port}")
+                udp_port = struct.unpack('!H', udp_port)[0]  
                 
-            elif msg_id == 5:
-                print("Client hat sich abgemeldet.")
-                # Client abgemeldet, entferne ihn aus der Liste
-                name_len = data[1]
-                name = data[2:2+name_len].decode('utf-8')
+                
+                # Namenslänge empfangen und dekodieren
+                name_len = recv_with_timeout(tcp_socket, expected_length=1, timeout=2)
+                name_len = name_len[0] 
+                
+                name = recv_with_timeout(tcp_socket, expected_length=name_len, timeout=2)
+                name = name.decode('utf-8')  # Dekodiere Bytes zu String
+                
+                
+                # Daten im Client-Array speichern
+                clients[name] = {'ip': ip, 'udp_port': udp_port}
+                print(f"Neuer Client: {name}, IP: {ip}, UDP Port: {udp_port}")
+            elif msg_id_int == 5:
+                name_len = recv_with_timeout(tcp_socket, expected_length=1, timeout=2)[0] 
+
+                name = recv_with_timeout(tcp_socket, expected_length=name_len, timeout=2).decode('utf-8')
+
                 if name in clients:
                     del clients[name]
-                print(f"Client {name} entfernt.")
-            elif msg_id == 6:
-                msg_len = struct.unpack('!H', data[1:3])[0]
-                message = data[3:3+msg_len].decode('utf-8')
-                print(f"Broadcast erhalten: {message}")
+                    print(f"Client {name} entfernt.")
+                else:
+                    print(f"Client {name} nicht in der Liste gefunden.")
+
+            
+            elif msg_id_int == 6:
+                msg_len = recv_with_timeout(tcp_socket, expected_length=2, timeout=2)
+                if msg_len:
+                    msg_len = int.from_bytes(msg_len, 'big')  # Konvertiere 2 Bytes zu Integer
+                    message = recv_with_timeout(tcp_socket, expected_length=msg_len, timeout=2).decode('utf-8') 
+                    print(f"Broadcast erhalten: {message}")
+                    
         except Exception as e:
             print(f"Fehler beim Empfangen von Nachrichten: {e}")
+
 
 
 

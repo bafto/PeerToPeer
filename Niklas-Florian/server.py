@@ -100,21 +100,14 @@ def handel_neuer_client_connected(client_socket, new_client_name, new_client_ip,
             try:
                 name_encoded = new_client_name.encode('utf-8')
                 name_len = len(name_encoded)
+                print("namelen: ", name_len)
 
                 ip_as_int = struct.unpack('!I', socket.inet_aton(new_client_ip))[0]  # Wandelt die IP in einen Integer um
 
                 msg = struct.pack('!I H B', ip_as_int, new_client_port, name_len) + name_encoded
 
-                response = struct.pack('!B H', 4, len(msg)) + msg
-
-                """
-                uint8_t msg_id; // 4
-                uint32_t client_ip;
-                uint16_t client_udp_port;
-                uint8_t name_len; // N
-                uint8_t name[N]; // utf-8
-                """
-
+                response = struct.pack('!B', 4) + msg
+                print("gesendet:", response)
                 sock.send(response)
             except Exception as e:
                 print(f"Fehler beim Senden der Benachrichtigung an {client_name}: {e}")
@@ -137,21 +130,22 @@ def handel_disconnected_notification(disconnected_client_name):  # Msg-Id: 5
 
 def handel_broadcast(client_socket):  # Msg-Id: 6
     try:
-        
-        msg_len = recv_with_timeout(client_socket, expected_length=2, timeout=2)
+        # Empfange die Länge der Nachricht (2 Bytes für die Länge)
+        msg_len_data = recv_with_timeout(client_socket, expected_length=2, timeout=2)
+        msg_len = struct.unpack('!H', msg_len_data)[0]  # Umwandlung von 2 Bytes zu einem Integer (Länge)
         msg = recv_with_timeout(client_socket, expected_length=msg_len, timeout=2)
 
+        # Broadcast an alle anderen Clients senden
         for client_name, (sock, client_ip, client_port) in clients.items():
-            if sock != client_socket:
+            if sock != client_socket:  # Nachricht nicht an den Sender selbst senden
                 try:
-                    response = struct.pack('!B H', 6, len(msg)) + msg.encode('utf-8')
-                    sock.send(response)
+                    response = struct.pack('!B H', 6, len(msg)) + msg  # Packen der Nachricht mit Msg-ID und Länge
+                    sock.send(response)  # Sende die Nachricht an den anderen Client
                     print(f"Nachricht an {client_name} gesendet: {msg}")
                 except Exception as e:
                     print(f"Fehler beim Senden der Broadcast-Nachricht an {client_name}: {e}")
     except Exception as e:
         print(f"Fehler beim Bearbeiten der Broadcast-Nachricht: {e}")
-
 
 
 def handel_disconnect_message(client_socket):  # Msg-Id: 7
@@ -182,11 +176,21 @@ def main():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((SERVER_HOST, SERVER_PORT))
     server_socket.listen(5)
+    server_socket.settimeout(1.0)  # Timeout von 1 Sekunde setzen
     print(f"Server listening on {SERVER_HOST}:{SERVER_PORT}")
 
-    while True:
-        client_socket, client_address = server_socket.accept()
-        threading.Thread(target=handle_client, args=(client_socket,)).start()
+    try:
+        while True:
+            try:
+                client_socket, client_address = server_socket.accept()
+                threading.Thread(target=handle_client, args=(client_socket,)).start()
+            except socket.timeout:
+                continue  # Timeout erreicht, weiter zur nächsten Iteration
+    except KeyboardInterrupt:
+        print("\nServer wird heruntergefahren...")
+    finally:
+        server_socket.close()
+
 
 
 if __name__ == "__main__":
