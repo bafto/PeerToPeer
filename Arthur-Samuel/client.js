@@ -569,9 +569,9 @@ async function main() {
                 case 6: {
                 // Broadcast
                 if (offset + 5 > serverBuffer.length) return;
-                const msgLen = serverBuffer.readUInt32BE(offset + 1);
-                if (offset + 5 + msgLen > serverBuffer.length) return;
-                const text = serverBuffer.slice(offset + 5, offset + 5 + msgLen).toString('utf8');
+                const msgLen = serverBuffer.readUInt16BE(offset + 1);
+                if (offset + 3 + msgLen > serverBuffer.length) return;
+                const text = serverBuffer.slice(offset + 3, offset + 5 + msgLen).toString('utf8');
                 offset += 5 + msgLen;
                 console.log(`[Broadcast] ${text}`);
                 break;
