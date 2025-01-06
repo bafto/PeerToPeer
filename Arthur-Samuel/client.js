@@ -85,7 +85,7 @@ function buildRegistrationMessage(ip, udpPort, name) {
 /**
  * Broadcast (ID=6):
  *  1 Byte msg_id=6
- *  4 Byte msg_len
+ *   Byte msg_len
  *  N Byte msg
  */
 function buildBroadcastMessage(text) {
@@ -95,8 +95,8 @@ function buildBroadcastMessage(text) {
   let offset = 0;
   buf.writeUInt8(6, offset);  // msg_id=6
   offset += 1;
-  buf.writeUInt32BE(textBuf.length, offset);
-  offset += 4;
+  buf.writeUInt16BE(textBuf.length, offset);
+  offset += 2;
   textBuf.copy(buf, offset);
   return buf;
 }

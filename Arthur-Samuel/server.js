@@ -192,8 +192,8 @@ function buildBroadcastMessage(text) {
   let offset = 0;
   buf.writeUInt8(6, offset); // Msg-ID=6
   offset += 1;
-  buf.writeUInt32BE(textBuf.length, offset);
-  offset += 4;
+  buf.writeUInt16BE(textBuf.length, offset);
+  offset += 2;
   textBuf.copy(buf, offset);
 
   return buf;
