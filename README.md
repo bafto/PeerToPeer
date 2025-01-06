@@ -107,7 +107,7 @@ struct ClientDisconnected {
 Ein Client schickt eine Broadcast Message an den Server. Der Server schickt daraufhin eine Broadcast Message an alle Clients. Timeout 5 Sekunden
 
 - 1 Byte Message ID (6)
-- 4 Byte Nachrichtlänge N (EC: 3)
+- 2 Byte Nachrichtlänge N (EC: 3)
 - N Byte Nachricht (EC: 4)
 
 ```C

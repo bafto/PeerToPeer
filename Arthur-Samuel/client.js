@@ -85,18 +85,18 @@ function buildRegistrationMessage(ip, udpPort, name) {
 /**
  * Broadcast (ID=6):
  *  1 Byte msg_id=6
- *  4 Byte msg_len
+ *  2 Byte msg_len
  *  N Byte msg
  */
 function buildBroadcastMessage(text) {
   const textBuf = Buffer.from(text, 'utf8');
-  const buf = Buffer.alloc(1 + 4 + textBuf.length);
+  const buf = Buffer.alloc(1 + 2 + textBuf.length);
 
   let offset = 0;
   buf.writeUInt8(6, offset);  // msg_id=6
   offset += 1;
-  buf.writeUInt32BE(textBuf.length, offset);
-  offset += 4;
+  buf.writeUInt16BE(textBuf.length, offset);
+  offset += 2;
   textBuf.copy(buf, offset);
   return buf;
 }
@@ -569,9 +569,9 @@ async function main() {
                 case 6: {
                 // Broadcast
                 if (offset + 5 > serverBuffer.length) return;
-                const msgLen = serverBuffer.readUInt32BE(offset + 1);
-                if (offset + 5 + msgLen > serverBuffer.length) return;
-                const text = serverBuffer.slice(offset + 5, offset + 5 + msgLen).toString('utf8');
+                const msgLen = serverBuffer.readUInt16BE(offset + 1);
+                if (offset + 3 + msgLen > serverBuffer.length) return;
+                const text = serverBuffer.slice(offset + 3, offset + 5 + msgLen).toString('utf8');
                 offset += 5 + msgLen;
                 console.log(`[Broadcast] ${text}`);
                 break;

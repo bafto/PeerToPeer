@@ -181,19 +181,19 @@ function buildClientDisconnected(name) {
  * Baut eine Broadcast-Nachricht (ID=6).
  * Struktur:
  * 1 Byte: Msg-ID=6
- * 4 Byte: Nachrichtenlänge N
+ * 2 Byte: Nachrichtenlänge N
  * N Byte: UTF-8 Nachricht
  */
 function buildBroadcastMessage(text) {
   const textBuf = Buffer.from(text, 'utf8');
-  const totalLength = 1 + 4 + textBuf.length;
+  const totalLength = 1 + 2 + textBuf.length;
   const buf = Buffer.alloc(totalLength);
 
   let offset = 0;
   buf.writeUInt8(6, offset); // Msg-ID=6
   offset += 1;
-  buf.writeUInt32BE(textBuf.length, offset);
-  offset += 4;
+  buf.writeUInt16BE(textBuf.length, offset);
+  offset += 2;
   textBuf.copy(buf, offset);
 
   return buf;
@@ -287,15 +287,15 @@ function handleData(socket, data) {
     case 6: {
       // Broadcast vom Client
       // 1 Byte Msg-ID
-      // 4 Byte msgLen
+      // 2 Byte msgLen
       // N Byte UTF-8
       if (data.length < 1 + 4) {
         socket.write(buildErrorMessage(0));
         return;
       }
       let offset = 1;
-      const msgLen = data.readUInt32BE(offset);
-      offset += 4;
+      const msgLen = data.readUInt16BE(offset);
+      offset += 2;
       if (msgLen === 0) {
         socket.write(buildErrorMessage(3)); // leere Nachricht
         return;
