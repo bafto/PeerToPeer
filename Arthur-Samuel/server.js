@@ -287,15 +287,15 @@ function handleData(socket, data) {
     case 6: {
       // Broadcast vom Client
       // 1 Byte Msg-ID
-      // 4 Byte msgLen
+      // 2 Byte msgLen
       // N Byte UTF-8
       if (data.length < 1 + 4) {
         socket.write(buildErrorMessage(0));
         return;
       }
       let offset = 1;
-      const msgLen = data.readUInt32BE(offset);
-      offset += 4;
+      const msgLen = data.readUInt16BE(offset);
+      offset += 2;
       if (msgLen === 0) {
         socket.write(buildErrorMessage(3)); // leere Nachricht
         return;
