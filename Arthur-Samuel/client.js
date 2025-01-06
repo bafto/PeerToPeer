@@ -90,7 +90,7 @@ function buildRegistrationMessage(ip, udpPort, name) {
  */
 function buildBroadcastMessage(text) {
   const textBuf = Buffer.from(text, 'utf8');
-  const buf = Buffer.alloc(1 + 4 + textBuf.length);
+  const buf = Buffer.alloc(1 + 2 + textBuf.length);
 
   let offset = 0;
   buf.writeUInt8(6, offset);  // msg_id=6
