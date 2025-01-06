@@ -107,12 +107,9 @@ def handel_neuer_client_connected(client_socket, new_client_name, new_client_ip,
                 msg = struct.pack('!I H B', ip_as_int, new_client_port, name_len) + name_encoded
 
                 response = struct.pack('!B', 4) + msg
-                print("gesendet:", response)
                 sock.send(response)
             except Exception as e:
                 print(f"Fehler beim Senden der Benachrichtigung an {client_name}: {e}")
-
-
 
 
 def handel_disconnected_notification(disconnected_client_name):  # Msg-Id: 5
@@ -130,22 +127,32 @@ def handel_disconnected_notification(disconnected_client_name):  # Msg-Id: 5
 
 def handel_broadcast(client_socket):  # Msg-Id: 6
     try:
-        # Empfange die Länge der Nachricht (2 Bytes für die Länge)
         msg_len_data = recv_with_timeout(client_socket, expected_length=2, timeout=2)
-        msg_len = struct.unpack('!H', msg_len_data)[0]  # Umwandlung von 2 Bytes zu einem Integer (Länge)
+        if not msg_len_data:  
+            print("Keine Daten für Nachrichtengröße empfangen.")
+            return
+        
+        msg_len = struct.unpack('!H', msg_len_data)[0]  
+        
         msg = recv_with_timeout(client_socket, expected_length=msg_len, timeout=2)
+        if not msg:  
+            print("Keine Nachricht empfangen.")
+            return
+
+        print("Broadcast Nachricht empfangen:", msg.decode('utf-8'))
 
         # Broadcast an alle anderen Clients senden
         for client_name, (sock, client_ip, client_port) in clients.items():
             if sock != client_socket:  # Nachricht nicht an den Sender selbst senden
                 try:
-                    response = struct.pack('!B H', 6, len(msg)) + msg  # Packen der Nachricht mit Msg-ID und Länge
-                    sock.send(response)  # Sende die Nachricht an den anderen Client
-                    print(f"Nachricht an {client_name} gesendet: {msg}")
+                    response = struct.pack('!B H', 6, len(msg)) + msg 
+                    sock.send(response)  
+                    print(f"Nachricht an {client_name} gesendet: {msg.decode('utf-8')}")
                 except Exception as e:
                     print(f"Fehler beim Senden der Broadcast-Nachricht an {client_name}: {e}")
     except Exception as e:
         print(f"Fehler beim Bearbeiten der Broadcast-Nachricht: {e}")
+
 
 
 def handel_disconnect_message(client_socket):  # Msg-Id: 7
