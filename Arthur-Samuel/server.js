@@ -376,13 +376,13 @@ const rl = readline.createInterface({
 });
 
 console.log('Server TUI-Kommandos:');
-console.log('  list    - Zeigt aktuelle Clients an');
-console.log('  exit    - Server beenden');
+console.log('  /list    - Zeigt aktuelle Clients an');
+console.log('  /exit    - Server beenden');
 
 rl.on('line', (line) => {
   const cmd = line.trim();
   switch (cmd) {
-    case 'list':
+    case '/list':
       console.log('Aktuelle Clients:');
       clients.forEach((c, idx) => {
         console.log(
@@ -390,7 +390,7 @@ rl.on('line', (line) => {
         );
       });
       break;
-    case 'exit':
+    case '/exit':
       console.log('Server wird beendet...');
       server.close(() => {
         process.exit(0);
