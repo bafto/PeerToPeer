@@ -1,7 +1,6 @@
 package messages
 
 import (
-	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -9,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-var ByteOrder = binary.LittleEndian
+var ByteOrder = binary.BigEndian
 
 type (
 	ErrorCode byte
@@ -55,13 +54,25 @@ func WriteClientInfo(w io.Writer, info ClientInfo) {
 
 func ReadClientInfo(r io.Reader) ClientInfo {
 	ip_slice := [4]byte{}
-	r.Read(ip_slice[:])
+	_, err := r.Read(ip_slice[:])
+	if err != nil {
+		panic(err)
+	}
 	port_slice := [2]byte{}
-	r.Read(port_slice[:])
+	_, err = r.Read(port_slice[:])
+	if err != nil {
+		panic(err)
+	}
 	name_len := [1]byte{}
-	r.Read(name_len[:])
+	_, err = r.Read(name_len[:])
+	if err != nil {
+		panic(err)
+	}
 	name := make([]byte, name_len[0])
-	r.Read(name)
+	_, err = r.Read(name)
+	if err != nil {
+		panic(err)
+	}
 
 	return ClientInfo{
 		Client_ip:   net.IP(ip_slice[:]),
@@ -79,16 +90,15 @@ type ErrorMessage struct {
 }
 
 func WriteErrorMessage(w io.Writer, code ErrorCode) {
-	_, err := w.Write([]byte{byte(Error), byte(code)})
-	if err != nil {
+	if err := binary.Write(w, ByteOrder, []byte{byte(Error), byte(code)}); err != nil {
 		panic(err)
 	}
 }
 
 func ReadError(r io.Reader) ErrorCode {
-	code := [1]byte{}
-	r.Read(code[:])
-	return ErrorCode(code[0])
+	code := ErrorCode(0)
+	binary.Read(r, ByteOrder, &code)
+	return code
 }
 
 type RegistrationRequestMessage struct {
@@ -98,7 +108,7 @@ type RegistrationRequestMessage struct {
 
 func ReadRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMessage, ErrorCode) {
 	m := [8]byte{}
-	_, err := conn.Read(m[:1])
+	err := binary.Read(conn, ByteOrder, m[:1])
 	if err != nil {
 		panic(err)
 	}
@@ -107,7 +117,7 @@ func ReadRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMessage,
 		return RegistrationRequestMessage{}, InvalidMessageID
 	}
 
-	_, err = io.ReadFull(conn, m[1:])
+	err = binary.Read(conn, ByteOrder, m[1:])
 	if err != nil {
 		panic(err)
 	}
@@ -117,7 +127,7 @@ func ReadRegistrationRequestMessage(conn io.Reader) (RegistrationRequestMessage,
 	}
 
 	name := make([]byte, m[7])
-	_, err = conn.Read(name)
+	err = binary.Read(conn, ByteOrder, name)
 	if err != nil {
 		panic(err)
 	}
@@ -145,7 +155,7 @@ func WriteRegistrationRequest(w io.Writer, client_ip net.IP, client_port uint16,
 		return fmt.Errorf("name length must be greater than 0")
 	}
 
-	w.Write([]byte{byte(RegistrationRequest)})
+	binary.Write(w, ByteOrder, byte(RegistrationRequest))
 	WriteClientInfo(w, ClientInfo{
 		Client_ip:   client_ip,
 		Client_port: client_port,
@@ -173,7 +183,10 @@ func WriteRegistrationResponse(w io.Writer, list map[net.Conn]ClientInfo) {
 // assumes message_id was already read
 func ReadRegistrationResponseMessage(r io.Reader) (RegistrationResponseMessage, error) {
 	n_clients_slice := [4]byte{}
-	r.Read(n_clients_slice[:])
+	err := binary.Read(r, ByteOrder, &n_clients_slice)
+	if err != nil {
+		return RegistrationResponseMessage{}, err
+	}
 	n_clients := ByteOrder.Uint32(n_clients_slice[:])
 	client_infos := make([]ClientInfo, 0, n_clients)
 	for range n_clients {
@@ -194,21 +207,22 @@ type BroadcastMessage struct {
 
 func WriteBroadcastMessage(w io.Writer, msg string) {
 	binary.Write(w, ByteOrder, byte(Broadcast))
-	binary.Write(w, ByteOrder, uint32(len(msg)))
-	w.Write([]byte(msg))
+	binary.Write(w, ByteOrder, uint16(len(msg)))
+	binary.Write(w, ByteOrder, []byte(msg))
 }
 
 // already read message ID
 func ReadBroadcastMessage(r io.Reader) BroadcastMessage {
-	msg_len := make([]byte, 4)
+	msg_len := make([]byte, 2)
 	_, err := r.Read(msg_len)
+	// err := binary.Read(r, ByteOrder, msg_len)
 	if err != nil {
 		panic(err)
 	}
 
 	msg_len_16 := ByteOrder.Uint16(msg_len)
 	msg := make([]byte, msg_len_16)
-	_, err = r.Read(msg)
+	err = binary.Read(r, ByteOrder, msg)
 	if err != nil {
 		panic(err)
 	}
@@ -247,19 +261,18 @@ type ClientDisconnectedMessage struct {
 func WriteClientDisconnectMessage(w io.Writer, name string) {
 	binary.Write(w, ByteOrder, byte(ClientDisconnectedS2C))
 	binary.Write(w, ByteOrder, byte(len(name)))
-	w.Write([]byte(name))
+	binary.Write(w, ByteOrder, []byte(name))
 }
 
 // assumes message_id was already read
 func ReadClientDisconnectMessage(r io.Reader) ClientDisconnectedMessage {
-	reader := bufio.NewReader(r)
-	name_len := [1]byte{}
-	reader.Read(name_len[:])
-	name := make([]byte, name_len[0])
-	reader.Read(name)
+	name_len := byte(0)
+	binary.Read(r, ByteOrder, &name_len)
+	name := make([]byte, name_len)
+	binary.Read(r, ByteOrder, name)
 	return ClientDisconnectedMessage{
 		Message_id: ClientDisconnectedS2C,
-		Name_len:   name_len[0],
+		Name_len:   name_len,
 		Name:       string(name),
 	}
 }
@@ -276,13 +289,16 @@ func WritePeerToPeerRequestMessage(w io.Writer, tcp_port uint16, nickname string
 	ByteOrder.PutUint16(msg[1:], tcp_port)
 	msg = append(msg, byte(len(nickname)))
 	msg = append(msg, []byte(nickname)...)
-	_, err := w.Write(msg)
-	return err
+	return binary.Write(w, ByteOrder, msg)
 }
 
 func ReadPeerToPeerRequestMessage(conn *net.UDPConn) (PeerToPeerRequestMessage, *net.UDPAddr, ErrorCode) {
 	b := [260]byte{}
 	_, addr, _ := conn.ReadFromUDP(b[:])
+
+	// b := [260]byte{}
+	// binary.Read(bytes.NewReader(b_raw[:]), ByteOrder, b)
+
 	if b[0] != byte(PeerToPeerRequest) {
 		return PeerToPeerRequestMessage{}, nil, InvalidMessageID
 	}
@@ -320,7 +336,7 @@ func ReadPeerToPeerMessage(r io.Reader) PeerToPeerMessageMessage {
 	msg_len := ByteOrder.Uint16(msg_len_slice[:])
 
 	msg := make([]byte, msg_len)
-	r.Read(msg)
+	binary.Read(r, ByteOrder, msg)
 	return PeerToPeerMessageMessage{
 		Message_id: PeerToPeerMessage,
 		Msg_len:    msg_len,

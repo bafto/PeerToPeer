@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"net"
@@ -96,8 +97,8 @@ func handleConnection(conn net.Conn) {
 
 	slog.Info("handling connection")
 	for {
-		msg_id := []byte{0}
-		_, err := conn.Read(msg_id)
+		msg_id := messages.MessageID(0)
+		err := binary.Read(conn, binary.LittleEndian, &msg_id)
 		if err != nil {
 			slog.Info("Client Disconnected", "remote-addr", conn.RemoteAddr())
 
@@ -113,7 +114,7 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 
-		switch messages.MessageID(msg_id[0]) {
+		switch msg_id {
 		case messages.Broadcast:
 			msg := messages.ReadBroadcastMessage(conn)
 			func() {
@@ -138,6 +139,7 @@ func handleConnection(conn net.Conn) {
 			code := messages.ReadError(conn)
 			slog.Error("Client responded with error", "code", code)
 		default:
+			slog.Warn("got invalid msg id from client", "msg-id", msg_id)
 			messages.WriteErrorMessage(conn, messages.InvalidMessageID)
 		}
 	}

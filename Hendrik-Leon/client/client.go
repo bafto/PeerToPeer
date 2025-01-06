@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -379,5 +380,5 @@ func handlePeerToPeerMessages(conn net.Conn, nickname string, log chan<- string)
 }
 
 func sendDisconnectMessage(conn net.Conn) {
-	conn.Write([]byte{byte(messages.DisconnectC2S)})
+	binary.Write(conn, messages.ByteOrder, byte(messages.DisconnectC2S))
 }
