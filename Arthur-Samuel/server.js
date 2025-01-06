@@ -186,7 +186,7 @@ function buildClientDisconnected(name) {
  */
 function buildBroadcastMessage(text) {
   const textBuf = Buffer.from(text, 'utf8');
-  const totalLength = 1 + 4 + textBuf.length;
+  const totalLength = 1 + 2 + textBuf.length;
   const buf = Buffer.alloc(totalLength);
 
   let offset = 0;
