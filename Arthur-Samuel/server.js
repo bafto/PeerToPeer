@@ -14,7 +14,7 @@
  *   6: Broadcast (Client->Server oder Server->Clients)
  *   7: Client Disconnect (Client->Server)
  *
- * UDP wird hier nur für die Client-zu-Client-Chat-Anfragen verwendet.
+ * Für das P2P (UDP):
  *   8: P2P Chat Anfrage (UDP)
  *   9: P2P Nachricht (UDP)
  */
@@ -41,7 +41,6 @@ const SERVER_TCP_PORT = 7777;
  * Hilfsfunktionen zum Konvertieren:
  *   - IP (string) <-> number (uint32)
  */
-
 function ipToUint32(ipStr) {
   const parts = ipStr.split('.').map(p => parseInt(p, 10));
   return ((parts[0] << 24) >>> 0)
@@ -60,11 +59,27 @@ function uint32ToIp(num) {
 }
 
 /**
+ * Für Fehlermeldungen eine kleine Decode-Funktion (nur zum Loggen).
+ */
+function decodeErrorCode(code) {
+  switch (code) {
+    case 0: return "Unbekannte Msg-ID";
+    case 1: return "(IP, Port) nicht unique";
+    case 2: return "Nickname nicht unique";
+    case 3: return "Textlänge ist 0";
+    case 4: return "Text nicht UTF-8";
+    case 5: return "Clientliste invalid";
+    default: return "Unbekannter Error Code";
+  }
+}
+
+/**
  * Baut eine Error-Message als Buffer:
  * Msg-ID (1 Byte = 0)
  * Error-Code (1 Byte)
  */
 function buildErrorMessage(errorCode) {
+  console.log(`Sende Error-Code=${errorCode} (${decodeErrorCode(errorCode)}) an Client.`);
   const buf = Buffer.alloc(2);
   buf.writeUInt8(0, 0);        // Msg-ID = 0
   buf.writeUInt8(errorCode, 1);
@@ -83,10 +98,7 @@ function buildErrorMessage(errorCode) {
  *   N Byte Name (UTF-8)
  */
 function buildRegistrationResponse(clientList) {
-  // Erst Länge berechnen
-  //   - Header: 1 (Msg-ID) + 4 (Anzahl)
-  //   - Pro Client: 4+2+1 + name.length
-  let totalLength = 1 + 4;
+  let totalLength = 1 + 4; // Msg-ID + Anzahl
   for (const c of clientList) {
     totalLength += 4 + 2 + 1 + Buffer.byteLength(c.name, 'utf8');
   }
@@ -205,19 +217,17 @@ function broadcast(buffer, exceptSocket = null) {
  */
 function handleData(socket, data) {
   // Achtung: In einer realen Implementierung müssten wir hier
-  // evtl. "puffern", falls mehrere Nachrichten in data stecken o.Ä.
-  // Hier tun wir so, als bekämen wir immer genau eine vollständige Nachricht.
-
+  // evtl. "puffern", wenn mehrere Nachrichten in data stecken usw.
   const msgId = data.readUInt8(0);
 
   switch (msgId) {
     case 1: {
       // Registrierung
-      //  1 Byte Msg-ID
-      //  4 Byte IP
-      //  2 Byte UDP-Port
-      //  1 Byte Name-Länge
-      //  N Byte Name
+      // 1 Byte Msg-ID
+      // 4 Byte IP
+      // 2 Byte UDP-Port
+      // 1 Byte Name-Länge
+      // N Byte Name
       if (data.length < 1 + 4 + 2 + 1) {
         socket.write(buildErrorMessage(0)); // Unbekannte oder fehlerhafte Nachricht
         return;
@@ -333,7 +343,6 @@ function handleData(socket, data) {
  * TCP-Server starten
  */
 const server = net.createServer((socket) => {
-  // Wenn Daten ankommen
   socket.on('data', (data) => {
     handleData(socket, data);
   });

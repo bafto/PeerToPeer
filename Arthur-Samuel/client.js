@@ -17,7 +17,7 @@ const dgram = require('dgram');
 const readline = require('readline');
 
 /** Konfiguration **/
-const SERVER_HOST = '127.0.0.1';
+const SERVER_HOST = '162.55.58.113';
 const SERVER_TCP_PORT = 7777;
 
 // Die lokale UDP-Socket, auf der wir P2P-Nachrichten empfangen
@@ -43,10 +43,24 @@ function uint32ToIp(num) {
   ].join('.');
 }
 
+/**
+ * Dekodiert Error-Codes in einen Text (für die Ausgabe im Client).
+ */
+function decodeErrorCode(code) {
+  switch (code) {
+    case 0: return "Unbekannte Msg-ID";
+    case 1: return "(IP, Port) nicht unique";
+    case 2: return "Nickname nicht unique";
+    case 3: return "Textlänge ist 0";
+    case 4: return "Text nicht UTF-8";
+    case 5: return "Clientliste invalid";
+    default: return "Unbekannter Error Code";
+  }
+}
+
 /** Globale Variablen zum Client */
 let myName = '';
-let myIpUint32 = 0;  // Wird im Normalfall vom Betriebssystem nicht benötigt,
-                     // wir nutzen dies nur für Demonstration/Kontrolle
+let myIpUint32 = 0;
 let tcpSocket = null; // TCP Verbindung zum Server
 const clientList = []; // Wird durch RegistrationResponse befüllt
 
@@ -107,7 +121,6 @@ function buildDisconnectMessage() {
 
 /**
  * Peer-To-Peer Request (UDP, ID=8)
- * Struktur:
  * 1 Byte Msg-ID=8
  * 2 Byte TCP-Port
  * 1 Byte Name-Länge
@@ -127,7 +140,7 @@ function buildPeerToPeerRequest(tcpPort, myName) {
  * Peer-To-Peer Message (UDP, ID=9)
  * 1 Byte Msg-ID=9
  * 4 Byte msgLen
- * N Byte UTF-8
+ * N Byte Nachricht
  */
 function buildPeerToPeerMessage(text) {
   const textBuf = Buffer.from(text, 'utf8');
@@ -139,12 +152,10 @@ function buildPeerToPeerMessage(text) {
 }
 
 /**
- * Einen TCP-Listener für eingehende P2P-Verbindungen starten:
- *   - Der "angefragte" Chatpartner baut die Verbindung auf
- *   - Wir empfangen Chat-Nachrichten
+ * TCP-Server für eingehende P2P-Verbindungen starten
  */
 let p2pTcpServer = null;
-let myP2pTcpPort = 0; // Actual local port
+let myP2pTcpPort = 0; // Tatsächlich belegter Port
 
 function startP2PServer() {
   return new Promise((resolve) => {
@@ -153,7 +164,6 @@ function startP2PServer() {
       console.log(`\n[P2P] Neuer TCP Chat eingegangen von ${sock.remoteAddress}:${sock.remotePort}`);
 
       sock.on('data', (chunk) => {
-        // Hier gehen wir davon aus, dass chunk eine komplette Chat-Nachricht enthält
         const msgText = chunk.toString('utf8');
         console.log(`[P2P-Chat] ${msgText}`);
       });
@@ -162,12 +172,11 @@ function startP2PServer() {
         console.log('[P2P] Verbindung geschlossen.');
       });
 
-      // Hier könnte man sock unter openP2PSessions abspeichern,
-      // z.B. wenn wir den Nicknamen kennen würden.
-      // Das Beispiel zeigt nur das Lesen von Daten.
+      // Kein explizites Speichern unter openP2PSessions (da wir hier den Nickname des Gegenübers nicht direkt kennen)
+      // Man könnte diesen per Protokoll aushandeln.
     });
 
-    // Einen freien Port für uns auswählen
+    // Auf beliebigem freien Port lauschen
     p2pTcpServer.listen(0, () => {
       myP2pTcpPort = p2pTcpServer.address().port;
       console.log(`[P2P] Wir lauschen jetzt auf TCP-Port ${myP2pTcpPort} für Peer-Verbindungen.`);
@@ -183,11 +192,10 @@ function startP2PServer() {
 const udpSocket = dgram.createSocket('udp4');
 
 udpSocket.on('message', (msg, rinfo) => {
-  // msg[0] = Msg-ID
   const msgId = msg.readUInt8(0);
   switch (msgId) {
     case 8: {
-      // P2P Chat Anfrage
+      // P2P-Chat-Anfrage
       // 1 Byte=8
       // 2 Byte=TCP-Port
       // 1 Byte=NameLen
@@ -196,16 +204,15 @@ udpSocket.on('message', (msg, rinfo) => {
 
       const theirTcpPort = msg.readUInt16BE(1);
       const nameLen = msg.readUInt8(3);
-      if (msg.length < 1 + 2 + 1 + nameLen) return;
+      if (msg.length < 4 + nameLen) return;
 
       const theirName = msg.slice(4, 4 + nameLen).toString('utf8');
-
-      console.log(`\n[P2P] Chat-Anfrage von ${theirName} (IP=${rinfo.address}:${rinfo.port}, will TCP=${theirTcpPort})`);
+      console.log(`\n[P2P] Chat-Anfrage von ${theirName} (IP=${rinfo.address}:${rinfo.port}, TCP-Port=${theirTcpPort})`);
       console.log(`[P2P] Baue TCP-Verbindung auf...`);
 
       // Wir bauen als Empfänger die TCP-Verbindung auf
       const p2pSock = net.createConnection({ host: rinfo.address, port: theirTcpPort }, () => {
-        console.log(`[P2P] TCP-Verbindung zu ${theirName} aufgebaut. Du kannst jetzt im TUI mit /p2pmsg chatten.`);
+        console.log(`[P2P] TCP-Verbindung zu ${theirName} aufgebaut. Nutze /p2pmsg für Nachrichten.`);
         openP2PSessions[theirName] = p2pSock;
       });
 
@@ -226,10 +233,12 @@ udpSocket.on('message', (msg, rinfo) => {
       break;
     }
     case 9: {
-      // P2P Nachricht (hier im Beispiel ungeachtet,
-      // denn wir wollen eigentlich die TCP-Verbindung nutzen)
+      // P2P Nachricht (UDP) – in diesem Beispiel nicht so relevant,
+      // weil wir P2P-Chat über TCP machen wollen.
+      // Aber wir nehmen es hier mal mit auf.
+      if (msg.length < 1 + 4) return;
       const msgLen = msg.readUInt32BE(1);
-      if (msg.length < 1 + 4 + msgLen) return;
+      if (msg.length < 5 + msgLen) return;
       const text = msg.slice(5, 5 + msgLen).toString('utf8');
       console.log(`[P2P-UDP] Von ${rinfo.address}:${rinfo.port} => ${text}`);
       break;
@@ -267,8 +276,7 @@ async function main() {
     tcpSocket = net.createConnection({ host: SERVER_HOST, port: SERVER_TCP_PORT }, () => {
       console.log('Verbunden mit dem Chat-Server.');
 
-      // Hier könnte man ipToUint32(localIP) machen. In Node ist das tricky,
-      // man könnte z.B. die "localAddress" aus dem Socket benutzen:
+      // IP in uint32 umwandeln (nur als "Fake", wir könnten auch 127.0.0.1 nehmen)
       const localIP = tcpSocket.localAddress || '127.0.0.1';
       myIpUint32 = ipToUint32(localIP);
 
@@ -304,14 +312,14 @@ function handleServerMessage(buf) {
     case 0: {
       // Error
       const errorCode = buf.readUInt8(1);
-      console.log(`Server-Fehlermeldung erhalten. Code=${errorCode}`);
+      console.log(`Server-Fehlermeldung: Code=${errorCode} => ${decodeErrorCode(errorCode)}`);
       break;
     }
     case 2: {
       // Registrierung Antwort
-      //  1 Byte: Msg-ID=2
-      //  4 Byte: Anzahl Clients
-      //  dann M Client-Einträge
+      // 1 Byte: Msg-ID=2
+      // 4 Byte: Anzahl Clients
+      // dann M Client-Einträge
       let offset = 1;
       const count = buf.readUInt32BE(offset);
       offset += 4;
@@ -387,6 +395,7 @@ function startTUI(rl) {
   rl.on('line', (line) => {
     const input = line.trim();
     if (!input) return;
+
     if (input.startsWith('/list')) {
       console.log('Aktuelle Clients:');
       clientList.forEach(c => {
@@ -428,7 +437,7 @@ function startTUI(rl) {
         console.log(`Keine offene P2P-Verbindung zu ${targetName}.`);
         return;
       }
-      // Einfach String direkt senden (dies ist unser "P2P-Chat-Protokoll" :-)
+      // Einfach String direkt senden
       p2pSock.write(msgText);
     } else if (input.startsWith('/exit')) {
       // Beenden
