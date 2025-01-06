@@ -85,7 +85,7 @@ function buildRegistrationMessage(ip, udpPort, name) {
 /**
  * Broadcast (ID=6):
  *  1 Byte msg_id=6
- *   Byte msg_len
+ *  2 Byte msg_len
  *  N Byte msg
  */
 function buildBroadcastMessage(text) {

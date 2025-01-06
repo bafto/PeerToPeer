@@ -181,7 +181,7 @@ function buildClientDisconnected(name) {
  * Baut eine Broadcast-Nachricht (ID=6).
  * Struktur:
  * 1 Byte: Msg-ID=6
- * 4 Byte: Nachrichtenlänge N
+ * 2 Byte: Nachrichtenlänge N
  * N Byte: UTF-8 Nachricht
  */
 function buildBroadcastMessage(text) {
