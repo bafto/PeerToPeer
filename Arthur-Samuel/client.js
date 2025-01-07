@@ -1,27 +1,10 @@
 #!/usr/bin/env node
 
-/**
- * Gruppenchat-Client gemäß Byte-Struktur-Protokoll.
- *
- * Hauptfunktionen:
- *  - TCP zum Server (Registrierung, Broadcast, Disconnect).
- *  - **P2P-Logik** wie im Go-Beispiel:
- *    - Initiator:  Startet lokalen TCP-Server (Port=0 => ephemeral).
- *                  Schickt (ID=8) per UDP "Komm auf Port X" an Peer.
- *    - Empfänger:  Bekommt UDP (ID=8), baut TCP-Verbindung auf.
- *    - Beide tauschen ID=9-Nachrichten über diese TCP-Verbindung aus.
- *
- *  - Name-Mapping via IP (UDP-Absender <-> TCP-remoteAddress).
- */
-
 const net = require('net');
 const dgram = require('dgram');
 const readline = require('readline');
 
-/** Server-Port laut Aufgabenstellung */
 const SERVER_TCP_PORT = 7777;
-
-/** Hilfsfunktionen **/
 
 /** Wandelt IPv4-String "a.b.c.d" in ein 32-Bit-Integer (Big-Endian) */
 function ipToUint32(ipStr) {
@@ -54,8 +37,6 @@ function decodeErrorCode(code) {
     default: return "Unbekannter Error Code";
   }
 }
-
-/** Nachrichten-Builder gemäß Spezifikation **/
 
 /**
  * Registrierungs-Nachricht (ID=1):
@@ -152,51 +133,22 @@ function buildPeerToPeerMessage(text) {
   return buf;
 }
 
-/** Globale Variablen **/
-let myName = '';                // Unser Nickname
-let myIpUint32 = 0;             // Unsere IP in UInt32
+let myName = '';                // Nickname
+let myIpUint32 = 0;             // IP in UInt32
 let serverHost = '';            // Server IP/Host
 let tcpSocket = null;           // TCP-Verbindung zum Server
 
-/**
- * Das hier ist der lokale UDP-Port, über den wir ID=8-Anfragen empfangen.
- * Hier ganz einfach ein Zufallsport im Bereich 30000..30999.
- */
+// Lokaler UDP-Port für P2P-Verbindungen
 let localUdpPort = 30000 + Math.floor(Math.random() * 1000);
 
-/**
- * clientList = Liste aller vom Server bekannten Clients
- * (jeweils { ip, udpPort, name }).
- */
+
 const clientList = [];
 
-/**
- * openP2PSessions = Map<Name, net.Socket> - offene P2P-TCP-Verbindungen
- * (ein Socket pro verbundener Peer).
- */
+
 const openP2PSessions = {};
 
-/**
- * Wir benötigen noch eine Zuordnung IP->Name, um den "Namen" zu kennen,
- * wenn wir von einer bestimmten IP eine UDP-Anfrage oder TCP-Connect erhalten.
- * Genauso wie in deinem Go-Beispiel p2pCandidates.
- */
 const p2pCandidates = {};
 
-/**
- * Wir starten einen globalen "P2P-Server" auf Port=0 (d.h. OS wählt Port),
- * aber hier machen wir es **wie im Go-Code**:
- *    - Nur der Initiator startet kurz (ad-hoc) einen ephemeral TCP-Server,
- *      verschickt Msg=8, und wartet EINMAL auf connect.
- *    - Der "Empfänger" erhält via UDP die Port-Info und baut selbst eine TCP-Verbindung auf.
- *
- * => Also implementieren wir "initiateP2P" + "handleIncomingP2PConnection".
- */
-
-/**
- * Starte ad-hoc einen TCP-Server auf einem ephemeral Port, wenn wir
- * (als Initiator) mit /p2p <name> eine Verbindung zu <name> aufbauen wollen.
- */
 function initiateP2PChat(targetName) {
   // 1) Finde IP/UDP-Port in clientList
   const target = clientList.find(c => c.name === targetName);
@@ -206,14 +158,12 @@ function initiateP2PChat(targetName) {
   }
   const ipStr = uint32ToIp(target.ip);
 
-  // 2) Lokalen TCP-Server starten (Port=0 => ephemeral)
   const server = net.createServer();
 
   server.listen(0, () => {
     const chosenPort = server.address().port;
     console.log(`[P2P] Starte lokalen TCP-Server (Port=${chosenPort}) für ${targetName}.`);
 
-    // 3) Schicke UDP-Paket (ID=8) an target.ip:target.udpPort
     const udpReq = buildPeerToPeerRequest(chosenPort, myName);
 
     const udpSender = dgram.createSocket('udp4');
@@ -234,13 +184,11 @@ function initiateP2PChat(targetName) {
     );
   });
 
-  // 4) Warte auf EINE eingehende Verbindung => Peer connected
   server.once('connection', (socket) => {
     console.log(`[P2P] ${targetName} hat sich verbunden (Port=${server.address().port}).`);
     openP2PSessions[targetName] = socket;
     handlePeerMessages(socket, targetName);
 
-    // Wir erlauben nur EINE Verbindung, dann Server wieder schließen:
     server.close();
   });
 
@@ -281,7 +229,6 @@ function handlePeerMessages(socket, remoteName) {
       }
       const msgLen = buffer.readUInt16BE(offset + 1);
       if (offset + 3 + msgLen > buffer.length) {
-        // unvollständig
         break;
       }
       const text = buffer.slice(offset + 3, offset + 3 + msgLen).toString('utf8');
@@ -360,9 +307,6 @@ function startUdpListener() {
   udpServer.bind(localUdpPort);
 }
 
-/**
- * Startet die einfache TUI
- */
 function startTUI(rl) {
   console.log('Verfügbare Befehle:');
   console.log('   /list                       - Liste aller Clients');
@@ -413,7 +357,6 @@ function startTUI(rl) {
         tcpSocket.end();
       }
       // UDP-Socket schließen
-      // (falls man will: hier udpSocket.close(), wir haben es in startUdpListener())
       // Offene P2P-Sockets schließen
       Object.entries(openP2PSessions).forEach(([key, s]) => s.destroy());
 
@@ -590,7 +533,6 @@ async function main() {
   });
 }
 
-/** Start! */
 main().catch(err => {
   console.error(err);
   process.exit(1);

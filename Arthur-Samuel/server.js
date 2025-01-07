@@ -1,24 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Server für den Gruppenchat.
- *
- * Protokoll gemäß der Aufgabenstellung:
- * TCP-Port: 7777
- * Nachrichtentypen (Msg-IDs):
- *   0: Error
- *   1: Registrierung (Client->Server)
- *   2: Registrierung Antwort (Server->Client)
- *   4: Neuer Client Connected (Server->Clients)
- *   5: Client Disconnected Notification (Server->Clients)
- *   6: Broadcast (Client->Server oder Server->Clients)
- *   7: Client Disconnect (Client->Server)
- *
- * Für das P2P (UDP):
- *   8: P2P Chat Anfrage (UDP)
- *   9: P2P Nachricht (UDP)
- */
-
 const net = require('net');
 const readline = require('readline');
 
@@ -27,18 +8,16 @@ const readline = require('readline');
  * Array von Objekten mit:
  *   {
  *     name: string,
- *     ip: number,     // 4-Byte IPv4 im Integer-Format
+ *     ip: number,
  *     udpPort: number,
  *     socket: net.Socket
  *   }
  */
 let clients = [];
 
-// TCP-Server-Port laut Aufgabenstellung
 const SERVER_TCP_PORT = 7777;
 
 /**
- * Hilfsfunktionen zum Konvertieren:
  *   - IP (string) <-> number (uint32)
  */
 function ipToUint32(ipStr) {
@@ -74,7 +53,6 @@ function decodeErrorCode(code) {
 }
 
 /**
- * Baut eine Error-Message als Buffer:
  * Msg-ID (1 Byte = 0)
  * Error-Code (1 Byte)
  */
@@ -127,8 +105,6 @@ function buildRegistrationResponse(clientList) {
 }
 
 /**
- * Baut die "Neuer Client Connected" (ID=4) Nachricht.
- * Struktur:
  * 1 Byte: Msg-ID = 4
  * 4 Byte: IP
  * 2 Byte: UDP-Port
@@ -156,8 +132,6 @@ function buildNewClientConnected(client) {
 }
 
 /**
- * Baut die "Client Disconnected" (ID=5) Nachricht.
- * Struktur:
  * 1 Byte: Msg-ID=5
  * 1 Byte: Name-Länge
  * N Byte: Name
@@ -178,8 +152,6 @@ function buildClientDisconnected(name) {
 }
 
 /**
- * Baut eine Broadcast-Nachricht (ID=6).
- * Struktur:
  * 1 Byte: Msg-ID=6
  * 2 Byte: Nachrichtenlänge N
  * N Byte: UTF-8 Nachricht
@@ -199,11 +171,6 @@ function buildBroadcastMessage(text) {
   return buf;
 }
 
-/**
- * Sendet an alle aktiven Clients die gegebene Nachricht (Buffer).
- * Optional kann man `exceptSocket` angeben, dann wird an diesen Socket
- * nicht gesendet.
- */
 function broadcast(buffer, exceptSocket = null) {
   for (const c of clients) {
     if (c.socket !== exceptSocket) {
@@ -216,8 +183,6 @@ function broadcast(buffer, exceptSocket = null) {
  * Handhabt eingehende Daten auf einer neu verbundenen TCP-Verbindung.
  */
 function handleData(socket, data) {
-  // Achtung: In einer realen Implementierung müssten wir hier
-  // evtl. "puffern", wenn mehrere Nachrichten in data stecken usw.
   const msgId = data.readUInt8(0);
 
   switch (msgId) {
