@@ -146,8 +146,8 @@ function buildPeerToPeerMessage(text) {
   let offset = 0;
   buf.writeUInt8(9, offset);
   offset += 1;
-  buf.writeUInt32BE(textBuf.length, offset);
-  offset += 4;
+  buf.writeUInt16BE(textBuf.length, offset);
+  offset += 2;
   textBuf.copy(buf, offset);
   return buf;
 }
@@ -279,12 +279,12 @@ function handlePeerMessages(socket, remoteName) {
         console.log(`[P2P] Unbekannte Msg-ID=${msgId}, erwartet 9`);
         return;
       }
-      const msgLen = buffer.readUInt32BE(offset + 1);
-      if (offset + 5 + msgLen > buffer.length) {
+      const msgLen = buffer.readUInt16BE(offset + 1);
+      if (offset + 3 + msgLen > buffer.length) {
         // unvollständig
         break;
       }
-      const text = buffer.slice(offset + 5, offset + 5 + msgLen).toString('utf8');
+      const text = buffer.slice(offset + 3, offset + 5 + msgLen).toString('utf8');
       console.log(`[P2P-Chat] Von ${remoteName}: ${text}`);
       offset += 5 + msgLen;
     }

@@ -149,7 +149,7 @@ struct PeerToPeerRequest {
 ### Peer-To-Peer Message (TCP, Client zu Client, ID: 9)
 Client schickt seinem Kommunikationspartner eine Nachricht
 - 1 Byte Message ID
-- 4 Byte Nachrichtlänge N (EC: 3)
+- 2 Byte Nachrichtlänge N (EC: 3)
 - N Byte Nachricht (EC: 4)
 
 ```C
