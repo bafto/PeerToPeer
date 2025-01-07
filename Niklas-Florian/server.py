@@ -201,6 +201,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python client.py --host 127.0.0.1 --tcp-port 30100 --udp-port 30102
-# python client.py --host 127.0.0.1 --tcp-port 30110 --udp-port 30112
 

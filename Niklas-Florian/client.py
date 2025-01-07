@@ -49,21 +49,56 @@ def receive_messages_server():
             msg_id_int = msg_id[0]
             print(f"Empfangene msg_id: {msg_id_int}")
 
-            if msg_id_int == 4:
+            if msg_id_int == 2:
+                num_clients_data = recv_with_timeout(tcp_socket_server, expected_length=4, timeout=2)
+                if not num_clients_data:
+                    print("Fehler: Konnte die Anzahl der Clients nicht lesen.")
+                    continue
+                
+                num_clients = struct.unpack('!I', num_clients_data)[0]
+                print(f"Erfolgreich registriert. {num_clients} andere Clients online.")
+                
+                for _ in range(num_clients):
+                    ip_data = recv_with_timeout(tcp_socket_server, expected_length=4, timeout=2)
+                    if not ip_data:
+                        print("Fehler: Konnte Client-IP nicht lesen.")
+                        continue
+                    ip = socket.inet_ntoa(ip_data)
+                    
+                    udp_port_data = recv_with_timeout(tcp_socket_server, expected_length=2, timeout=2)
+                    if not udp_port_data:
+                        print("Fehler: Konnte UDP-Port nicht lesen.")
+                        continue
+                    udp_port = struct.unpack('!H', udp_port_data)[0]
+                    
+                    name_len_data = recv_with_timeout(tcp_socket_server, expected_length=1, timeout=2)
+                    if not name_len_data:
+                        print("Fehler: Konnte Namenslänge nicht lesen.")
+                        continue
+                    name_len = name_len_data[0]
+                    
+                    name_data = recv_with_timeout(tcp_socket_server, expected_length=name_len, timeout=2)
+                    if not name_data:
+                        print("Fehler: Konnte Client-Name nicht lesen.")
+                        continue
+                    name = name_data.decode('utf-8')
+                    
+                    clients[name] = {'ip': ip, 'udp_port': udp_port}
+                    print(f"Client hinzugefügt: {name}, IP: {ip}, UDP Port: {udp_port}")
+            
+            elif msg_id_int == 4:
                 ip = recv_with_timeout(tcp_socket_server, expected_length=4, timeout=2)
                 ip = socket.inet_ntoa(ip)  
 
                 udp_port = recv_with_timeout(tcp_socket_server, expected_length=2, timeout=2)
                 udp_port = struct.unpack('!H', udp_port)[0]  
                 
-                # Namenslänge empfangen und dekodieren
                 name_len = recv_with_timeout(tcp_socket_server, expected_length=1, timeout=2)
                 name_len = name_len[0] 
                 
                 name = recv_with_timeout(tcp_socket_server, expected_length=name_len, timeout=2)
                 name = name.decode('utf-8')  # Dekodiere Bytes zu String
                 
-                # Daten im Client-Array speichern
                 clients[name] = {'ip': ip, 'udp_port': udp_port}
                 print(f"Neuer Client: {name}, IP: {ip}, UDP Port: {udp_port}")
             elif msg_id_int == 5:
@@ -77,7 +112,6 @@ def receive_messages_server():
                 else:
                     print(f"Client {name} nicht in der Liste gefunden.")
 
-            
             elif msg_id_int == 6:
                 msg_len = recv_with_timeout(tcp_socket_server, expected_length=2, timeout=2)
                 if msg_len:
@@ -88,8 +122,6 @@ def receive_messages_server():
         except Exception as e:
             print(f"Fehler beim Empfangen von Nachrichten: {e}")
 
-
-# Registrierung beim Server
 def register_with_server(nickname, server_host, server_port, udp_port):
     try:
         tcp_socket_server.connect((server_host, server_port))
@@ -99,24 +131,10 @@ def register_with_server(nickname, server_host, server_port, udp_port):
         msg = struct.pack('!B4sH B', 1, ip, udp_port, len(nickname)) + nickname.encode('utf-8')
         tcp_socket_server.send(msg)
         
-        response = tcp_socket_server.recv(1024)
-        msg_id, num_clients = struct.unpack('!B I', response[:5])
-        print(f"Erfolgreich registriert. {num_clients} andere Clients online.")
-
-        # Clients aus der Antwort extrahieren und speichern
-        if msg_id == 2:
-            idx = 5
-            while idx < len(response):
-                ip = socket.inet_ntoa(response[idx:idx+4])
-                udp_port = struct.unpack('!H', response[idx+4:idx+6])[0]
-                name_len = response[idx+6]
-                name = response[idx+7:idx+7+name_len].decode('utf-8')
-                clients[name] = {'ip': ip, 'udp_port': udp_port}
-                idx += 7 + name_len
-
     except Exception as e:
         print(f"Fehler bei der Registrierung: {e}")
         tcp_socket_server.close()
+
 
 # Client-Liste anzeigen
 def get_client_list():
@@ -312,3 +330,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# python client.py --host 127.0.0.1 --tcp-port 30100 --udp-port 30102
+# python client.py --host 127.0.0.1 --tcp-port 30110 --udp-port 30112
