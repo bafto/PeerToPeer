@@ -146,14 +146,103 @@ def disconnect_from_server():
     except Exception as e:
         print(f"Fehler beim Abmelden: {e}")
 
+
 # P2P -----------------------------------
+
+p2p_tcp_socket = None  # Wirst später initialisiert
+
+# Für den Server
+def start_tcp_server_for_p2p():
+    global p2p_tcp_server_socket
+    p2p_tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    p2p_tcp_server_socket.bind((IP, TCP_PORT))
+    p2p_tcp_server_socket.listen(1)
+    print(f"P2P-TCP-Server läuft auf Port {TCP_PORT}. Warten auf eingehende Verbindungen...")
+
+    conn, addr = p2p_tcp_server_socket.accept()
+    print(f"Verbindung zu {addr} hergestellt.")
+
+    # Nachrichten empfangen und senden
+    handle_p2p_messages(conn)
+
+
+# Für den Client
+def start_P2P_chat(target_name):
+    global p2p_tcp_socket
+    global current_P2P_partner_name
+    if target_name not in clients:
+        print(f"Kein Client mit dem Namen {target_name} gefunden.")
+        return
+
+    target_info = clients[target_name]
+    target_ip = target_info['ip']
+    target_udp_port = target_info['udp_port']
+
+    # TCP-Server für den Initiator starten
+    p2p_tcp_server_thread = threading.Thread(target=start_tcp_server_for_p2p)
+    p2p_tcp_server_thread.start()
+
+    # UDP-Nachricht an den Ziel-Peer senden
+    udp_socket.sendto(struct.pack('!B H', 8, TCP_PORT) + target_name.encode('utf-8'),
+                      (target_ip, target_udp_port))
+
+    # Warten, bis der Peer die TCP-Verbindung akzeptiert
+    time.sleep(2)  # Warte auf eine Verbindung, kann angepasst werden
+
+    current_P2P_partner_name = target_name
+    print(f"P2P-Chat mit {target_name} gestartet.")
+
+
+
+def handle_p2p_messages(p2p_connection):
+    global running
+    try:
+        while running:
+            msg_len_data = recv_with_timeout(p2p_connection, expected_length=2, timeout=2)
+            if msg_len_data is None:
+                break
+            
+            msg_len = struct.unpack('!H', msg_len_data)[0]
+            message = recv_with_timeout(p2p_connection, expected_length=msg_len, timeout=2)
+            if message is None:
+                break
+
+            print(f"Nachricht vom P2P-Partner: {message.decode('utf-8')}")
+    except Exception as e:
+        print(f"Fehler beim Nachrichtenempfang im P2P-Chat: {e}")
+    finally:
+        p2p_connection.close()
+        print("P2P-Verbindung geschlossen.")
+
+
+def receive_udp_p2p_request():
+    while running:
+        data, addr = udp_socket.recvfrom(1024)
+        if data:
+            msg_id = data[0]
+            if msg_id == 8:
+                target_tcp_port = struct.unpack('!H', data[1:3])[0]
+                target_name = data[3:].decode('utf-8')
+
+                print(f"P2P-Anfrage von {target_name} erhalten. TCP-Port: {target_tcp_port}")
+
+                # TCP-Verbindung zum Initiator herstellen
+                p2p_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                p2p_tcp_socket.connect((addr[0], target_tcp_port))
+
+                # Verbindung starten
+                handle_p2p_messages(p2p_tcp_socket)
+
+                global current_P2P_partner_name
+                current_P2P_partner_name = target_name
+                print(f"P2P-Verbindung zu {target_name} hergestellt.")
+
 
 # P2P -----------------------------------
 
 # Sockets für TCP und UDP erstellen
 tcp_socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-tcp_socket_P2P = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 def main():
     parser = argparse.ArgumentParser(description='TCP/UDP Chat-Client')
@@ -176,7 +265,9 @@ def main():
     receiver_thread = threading.Thread(target=receive_messages_server)
     receiver_thread.start()
 
-    
+    # Empfange P2P-Anfragen über UDP
+    p2p_thread = threading.Thread(target=receive_udp_p2p_request)
+    p2p_thread.start()
 
     try:
         while running:
@@ -193,7 +284,17 @@ def main():
                 send_broadcast(message)
             elif choice == '2':
                 target_name = input("Name des Ziel-Clients: ")
-                #start_P2P_chat(target_name)
+                start_P2P_chat(target_name)
+            elif choice == '6':
+                if current_P2P_partner_name:
+                    message = input("Nachricht an Peer: ")
+                    if current_P2P_partner_name:  # Nur senden, wenn der Partner verbunden ist
+                        msg_data = struct.pack('!H', len(message)) + message.encode('utf-8')
+                        # Hier verwende das globale p2p_tcp_socket
+                        p2p_tcp_socket.send(msg_data)
+                        print(f"Nachricht an Peer gesendet.")
+                    else:
+                        print("Kein aktiver P2P-Partner. Verbindungsaufbau erforderlich.")
             elif choice == '3':
                 get_client_list()
             elif choice == '5':
@@ -201,15 +302,6 @@ def main():
                     print(f"Aktueller P2P-Partner: {current_P2P_partner_name}")
                 else:
                     print("Kein P2P-Partner verbunden.")
-            elif choice == '6':
-                # Nachricht über P2P senden
-                if current_P2P_partner_name:
-                    message = input("Nachricht an Peer: ")
-                    msg_data = struct.pack('!H', len(message)) + message.encode('utf-8')
-                    tcp_socket_P2P.send(msg_data)
-                    print(f"Nachricht an Peer gesendet.")
-                else:
-                    print("Kein aktiver P2P-Partner. Verbindungsaufbau erforderlich.")
             elif choice == '7':
                 disconnect_from_server()
                 break
