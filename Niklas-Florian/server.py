@@ -4,7 +4,7 @@ import struct
 import argparse
 import time
 
-SERVER_HOST = '0.0.0.0'
+SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 7777
 
 clients = {}  # Speichert die Verbindungen der Clients
@@ -198,7 +198,9 @@ def main():
     finally:
         server_socket.close()
 
-
-
 if __name__ == "__main__":
     main()
+
+# python client.py --host 127.0.0.1 --tcp-port 30100 --udp-port 30102
+# python client.py --host 127.0.0.1 --tcp-port 30110 --udp-port 30112
+
