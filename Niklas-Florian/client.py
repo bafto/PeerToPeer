@@ -153,15 +153,16 @@ p2p_tcp_socket = None  # Wirst später initialisiert
 
 # Für den Server
 def start_tcp_server_for_p2p():
-    global p2p_tcp_server_socket
-    p2p_tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    p2p_tcp_server_socket.bind((IP, TCP_PORT))
-    p2p_tcp_server_socket.listen(1)
+    global p2p_tcp_socket
+    p2p_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    p2p_tcp_socket.bind((IP, TCP_PORT))
+    p2p_tcp_socket.listen(1)
     print(f"P2P-TCP-Server läuft auf Port {TCP_PORT}. Warten auf eingehende Verbindungen...")
 
-    conn, addr = p2p_tcp_server_socket.accept()
+    conn, addr = p2p_tcp_socket.accept()
     print(f"Verbindung zu {addr} hergestellt.")
 
+    p2p_tcp_socket = conn
     # Nachrichten empfangen und senden
     handle_p2p_messages(conn)
 
@@ -227,15 +228,16 @@ def receive_udp_p2p_request():
                 print(f"P2P-Anfrage von {target_name} erhalten. TCP-Port: {target_tcp_port}")
 
                 # TCP-Verbindung zum Initiator herstellen
+                global p2p_tcp_socket
                 p2p_tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 p2p_tcp_socket.connect((addr[0], target_tcp_port))
 
-                # Verbindung starten
-                handle_p2p_messages(p2p_tcp_socket)
-
                 global current_P2P_partner_name
                 current_P2P_partner_name = target_name
-                print(f"P2P-Verbindung zu {target_name} hergestellt.")
+                print(f"P2P-Verbindung zu {target_name} hergestellt. {p2p_tcp_socket}")
+
+                # Verbindung starten
+                handle_p2p_messages(p2p_tcp_socket)
 
 
 # P2P -----------------------------------
@@ -288,13 +290,13 @@ def main():
             elif choice == '6':
                 if current_P2P_partner_name:
                     message = input("Nachricht an Peer: ")
-                    if current_P2P_partner_name:  # Nur senden, wenn der Partner verbunden ist
-                        msg_data = struct.pack('!H', len(message)) + message.encode('utf-8')
-                        # Hier verwende das globale p2p_tcp_socket
-                        p2p_tcp_socket.send(msg_data)
-                        print(f"Nachricht an Peer gesendet.")
-                    else:
-                        print("Kein aktiver P2P-Partner. Verbindungsaufbau erforderlich.")
+                    msg_data = struct.pack('!H', len(message)) + message.encode('utf-8')
+                    # Hier verwende das globale p2p_tcp_socket
+                    print(f"socket {p2p_tcp_socket}")
+                    p2p_tcp_socket.send(msg_data)
+                    print(f"Nachricht an Peer gesendet.")
+                else:
+                    print("Kein aktiver P2P-Partner. Verbindungsaufbau erforderlich.")
             elif choice == '3':
                 get_client_list()
             elif choice == '5':
