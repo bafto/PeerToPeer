@@ -1,5 +1,7 @@
 # Chat
 
+Gruppenmitglieder: Hendrik Ziegler, Leon Gies, Arthur Zeidler, Florian Hauser, Niklass Schaffran, Samuel Tim
+
 ## Allgemein
 
 ### Message IDs
