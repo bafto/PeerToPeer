@@ -141,7 +141,7 @@ function buildPeerToPeerRequest(myTcpPort, myName) {
  */
 function buildPeerToPeerMessage(text) {
   const textBuf = Buffer.from(text, 'utf8');
-  const buf = Buffer.alloc(1 + 4 + textBuf.length);
+  const buf = Buffer.alloc(1 + 2 + textBuf.length);
 
   let offset = 0;
   buf.writeUInt8(9, offset);
@@ -273,7 +273,7 @@ function handlePeerMessages(socket, remoteName) {
 
   function parseMessages() {
     let offset = 0;
-    while (offset + 5 <= buffer.length) {
+    while (offset + 3 <= buffer.length) {
       const msgId = buffer.readUInt8(offset);
       if (msgId !== 9) {
         console.log(`[P2P] Unbekannte Msg-ID=${msgId}, erwartet 9`);
@@ -284,9 +284,9 @@ function handlePeerMessages(socket, remoteName) {
         // unvollständig
         break;
       }
-      const text = buffer.slice(offset + 3, offset + 5 + msgLen).toString('utf8');
+      const text = buffer.slice(offset + 3, offset + 3 + msgLen).toString('utf8');
       console.log(`[P2P-Chat] Von ${remoteName}: ${text}`);
-      offset += 5 + msgLen;
+      offset += 3 + msgLen;
     }
     buffer = buffer.slice(offset);
   }
