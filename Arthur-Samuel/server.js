@@ -308,8 +308,18 @@ function handleData(socket, data) {
  * TCP-Server starten
  */
 const server = net.createServer((socket) => {
+  let dataBuffer = Buffer.alloc(0);
+  let timer = null;
+
   socket.on('data', (data) => {
-    handleData(socket, data);
+    dataBuffer = Buffer.concat([dataBuffer, data]);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => {
+      handleData(socket, dataBuffer);
+      dataBuffer = Buffer.alloc(0);
+    }, 100);
   });
 
   socket.on('error', (err) => {
