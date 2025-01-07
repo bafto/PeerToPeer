@@ -109,6 +109,7 @@ func handleConnection(conn net.Conn) {
 				if _, ok := client_list[conn]; ok {
 					slog.Warn("Client did not yet send a disconnect message")
 					broadcastClientDisconnect()
+					delete(client_list, conn)
 				}
 			}()
 			return

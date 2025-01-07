@@ -26,6 +26,7 @@ const (
 var client_port uint16 = 7778
 
 func main() {
+	current_port.Store(9999)
 	if len(os.Args) > 1 {
 		port, err := strconv.ParseUint(os.Args[1], 10, 16)
 		if err != nil {
@@ -34,7 +35,7 @@ func main() {
 		client_port = uint16(port)
 	}
 
-	serverAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("localhost:%d", server_port))
+	serverAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("127.0.0.1:%d", server_port))
 	if err != nil {
 		panic(err)
 	}
@@ -256,8 +257,12 @@ func connectPeerToPeer(client_info messages.ClientInfo, nickname string, wg *syn
 
 	tcp_port := uint16(current_port.Add(1))
 	connected := make(chan struct{})
-	handlePeerToPeerChatServer(tcp_port, client_info.Name, connected, wg, log)
+	if err := handlePeerToPeerChatServer(tcp_port, client_info.Name, connected, wg, log); err != nil {
+		log <- "error setting up p2p tcp server: " + err.Error()
+		return
+	}
 
+	time.Sleep(time.Second * 2)
 	timer := time.NewTimer(time.Second * 2)
 
 	if err := messages.WritePeerToPeerRequestMessage(conn, tcp_port, nickname); err != nil {
@@ -282,7 +287,7 @@ func connectPeerToPeer(client_info messages.ClientInfo, nickname string, wg *syn
 }
 
 func handlePeerToPeerChatServer(tcp_port uint16, nickname string, connected chan<- struct{}, wg *sync.WaitGroup, log chan<- string) error {
-	tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("localhost:%d", tcp_port))
+	tcpAddr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("127.0.0.1:%d", tcp_port))
 	if err != nil {
 		return err
 	}
@@ -314,7 +319,7 @@ func handlePeerToPeerChatServer(tcp_port uint16, nickname string, connected chan
 func handlePeerToPeerChatClient(wg *sync.WaitGroup, log chan<- string) {
 	defer wg.Done()
 
-	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", "localhost", client_port))
+	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", "127.0.0.1", client_port))
 	if err != nil {
 		log <- "could not resolve client address: " + err.Error()
 		return
